@@ -36,8 +36,6 @@
         </select>
         {% if is_admin %}
             <a href="{{ url_for('sales') }}" class="btn-nav"><i class="bi bi-table"></i> Ventas</a>
-            <a href="{{ url_for('meta') }}" class="btn-nav"><i class="bi bi-bullseye"></i> Metas</a>
-            <a href="{{ url_for('metas_vendedor') }}" class="btn-nav"><i class="bi bi-people"></i> Metas Vendedor</a>
         {% endif %}
         <a href="{{ url_for('logout') }}" class="btn-salir"><i class="bi bi-box-arrow-right"></i> Salir</a>
     </div>
@@ -110,9 +108,6 @@
                 <h3>Meta LC Total y Venta por Línea Comercial Local</h3>
                 {% if is_admin %}
                     <div class="tabla-header-botones">
-                        <a href="https://stockodoo.onrender.com" target="_blank" class="btn-custom-action">
-                            <i class="bi bi-box-arrow-up-right"></i> Stock Odoo
-                        </a>
                         <a href="{{ url_for('export_dashboard_details', mes=mes_seleccionado, dia_fin=dia_actual) }}" class="btn-export-tabla">
                             <i class="bi bi-file-earmark-excel"></i> Exportar Detalle
                         </a>

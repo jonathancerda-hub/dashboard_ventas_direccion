@@ -13,9 +13,14 @@ from datetime import datetime, timedelta
 from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
 from openpyxl.utils import get_column_letter
 
-load_dotenv()
+load_dotenv(override=True)
 app = Flask(__name__)
-app.secret_key = os.getenv('SECRET_KEY')
+
+# --- Configuración de la Clave Secreta ---
+app.secret_key = os.getenv("SECRET_KEY")
+if not app.secret_key:
+    print("⚠️  Advertencia: La variable de entorno SECRET_KEY no está configurada.")
+    print("La sesión de Flask no funcionará (ej. login, flash messages).")
 
 # Configuración para deshabilitar cache de templates
 app.config['TEMPLATES_AUTO_RELOAD'] = True
@@ -1083,148 +1088,11 @@ def dashboard_linea():
 
 @app.route('/meta', methods=['GET', 'POST'])
 def meta():
+    """Ruta deshabilitada - plantilla no existe en este proyecto"""
     if 'username' not in session:
         return redirect(url_for('login'))
-
-    # --- Verificación de Permisos ---
-    admin_users = ["jonathan.cerda@agrovetmarket.com", "janet.hueza@agrovetmarket.com", "AMAHOdoo@agrovetmarket.com"]
-    is_admin = session.get('username') in admin_users
-    if not is_admin:
-        flash('No tienes permiso para acceder a esta página.', 'warning')
-        return redirect(url_for('dashboard'))
-    # --- Fin Verificación ---
-    
-    try:
-        # Líneas comerciales estáticas de la empresa
-        lineas_comerciales_estaticas = [
-            {'nombre': 'PETMEDICA', 'id': 'petmedica'},
-            {'nombre': 'AGROVET', 'id': 'agrovet'},
-            {'nombre': 'PET NUTRISCIENCE', 'id': 'pet_nutriscience'},
-            {'nombre': 'AVIVET', 'id': 'avivet'},
-            {'nombre': 'OTROS', 'id': 'otros'},
-            {'nombre': 'TERCEROS', 'id': 'terceros'},
-            {'nombre': 'INTERPET', 'id': 'interpet'},
-        ]
-        
-        # Obtener año actual y mes seleccionado
-        fecha_actual = datetime.now()
-        año_actual = fecha_actual.year
-        mes_seleccionado = request.args.get('mes', fecha_actual.strftime('%Y-%m'))
-        
-        # Crear todos los meses del año actual
-        meses_año = [{'es_actual': m['key'] == fecha_actual.strftime('%Y-%m'), **m} for m in get_meses_del_año(año_actual)]
-        
-        if request.method == 'POST':
-            # Obtener el mes del formulario
-            mes_formulario = request.form.get('mes_seleccionado', mes_seleccionado)
-            
-            # Procesar metas enviadas
-            metas_data = {}
-            metas_ipn_data = {}
-            total_meta = 0
-            total_meta_ipn = 0
-            
-            for linea in lineas_comerciales_estaticas:
-                # Procesar Meta Total
-                meta_value = request.form.get(f"meta_{linea['id']}", '0')
-                try:
-                    clean_value = str(meta_value).replace(',', '') if meta_value else '0'
-                    valor = float(clean_value) if clean_value else 0.0
-                    metas_data[linea['id']] = valor
-                    total_meta += valor
-                except (ValueError, TypeError):
-                    metas_data[linea['id']] = 0.0
-                
-                # Procesar Meta IPN
-                meta_ipn_value = request.form.get(f"meta_ipn_{linea['id']}", '0')
-                try:
-                    clean_value_ipn = str(meta_ipn_value).replace(',', '') if meta_ipn_value else '0'
-                    valor_ipn = float(clean_value_ipn) if clean_value_ipn else 0.0
-                    metas_ipn_data[linea['id']] = valor_ipn
-                    total_meta_ipn += valor_ipn
-                except (ValueError, TypeError):
-                    metas_ipn_data[linea['id']] = 0.0
-            
-            # --- Procesar Meta ECOMMERCE (campo estático) ---
-            # Procesar Meta Total ECOMMERCE
-            meta_ecommerce_value = request.form.get('meta_ecommerce', '0')
-            try:
-                clean_value_ecommerce = str(meta_ecommerce_value).replace(',', '') if meta_ecommerce_value else '0'
-                valor_ecommerce = float(clean_value_ecommerce) if clean_value_ecommerce else 0.0
-                metas_data['ecommerce'] = valor_ecommerce
-                total_meta += valor_ecommerce
-            except (ValueError, TypeError):
-                metas_data['ecommerce'] = 0.0
-
-            # Procesar Meta IPN ECOMMERCE
-            meta_ipn_ecommerce_value = request.form.get('meta_ipn_ecommerce', '0')
-            try:
-                clean_value_ipn_ecommerce = str(meta_ipn_ecommerce_value).replace(',', '') if meta_ipn_ecommerce_value else '0'
-                valor_ipn_ecommerce = float(clean_value_ipn_ecommerce) if clean_value_ipn_ecommerce else 0.0
-                metas_ipn_data['ecommerce'] = valor_ipn_ecommerce
-                total_meta_ipn += valor_ipn_ecommerce
-            except (ValueError, TypeError):
-                metas_ipn_data['ecommerce'] = 0.0
-            # --- Fin del procesamiento de ECOMMERCE ---
-
-            # Encontrar el nombre del mes
-            mes_obj = next((m for m in meses_año if m['key'] == mes_formulario), None)
-            mes_nombre_formulario = mes_obj['nombre'] if mes_obj else ""
-            
-            metas_historicas = gs_manager.read_metas_por_linea()
-            metas_historicas[mes_formulario] = {
-                'metas': metas_data,
-                'metas_ipn': metas_ipn_data,
-                'total': total_meta,
-                'total_ipn': total_meta_ipn,
-                'mes_nombre': mes_nombre_formulario
-            }
-            gs_manager.write_metas_por_linea(metas_historicas)
-            
-            flash(f'Metas guardadas exitosamente para {mes_nombre_formulario}. Total: S/ {total_meta:,.0f}', 'success')
-            
-            # Actualizar mes seleccionado después de guardar
-            mes_seleccionado = mes_formulario
-        
-        # Obtener todas las metas históricas
-        metas_historicas = gs_manager.read_metas_por_linea()
-        
-        # Obtener metas y total del mes seleccionado
-        metas_actuales = metas_historicas.get(mes_seleccionado, {}).get('metas', {})
-        metas_ipn_actuales = metas_historicas.get(mes_seleccionado, {}).get('metas_ipn', {})
-        total_actual = sum(metas_actuales.values()) if metas_actuales else 0
-        total_ipn_actual = sum(metas_ipn_actuales.values()) if metas_ipn_actuales else 0
-        
-        # Encontrar el nombre del mes seleccionado
-        mes_obj_seleccionado = next((m for m in meses_año if m['key'] == mes_seleccionado), meses_año[fecha_actual.month - 1])
-        
-        return render_template('meta.html',
-                             lineas_comerciales=lineas_comerciales_estaticas,
-                             metas_actuales=metas_actuales,
-                             metas_ipn_actuales=metas_ipn_actuales,
-                             metas_historicas=metas_historicas,
-                             meses_año=meses_año,
-                             mes_seleccionado=mes_seleccionado,
-                             mes_nombre=mes_obj_seleccionado['nombre'],
-                             total_actual=total_actual,
-                             total_ipn_actual=total_ipn_actual,
-                             fecha_actual=fecha_actual,
-                             is_admin=is_admin) # Pasar el flag a la plantilla
-    
-    except Exception as e:
-        flash(f'Error al procesar metas: {str(e)}', 'danger')
-        return render_template('meta.html',
-                             lineas_comerciales=[],
-                             metas_actuales={},
-                             metas_ipn_actuales={},
-                             metas_historicas={},
-                             meses_año=[],
-                             mes_seleccionado="",
-                             mes_nombre="",
-                             total_actual=0,
-                             total_ipn_actual=0,
-                             fecha_actual=datetime.now(),
-                             is_admin=is_admin) # Pasar el flag a la plantilla
+    flash('Esta funcionalidad no está disponible en este proyecto.', 'warning')
+    return redirect(url_for('dashboard'))
 
 @app.route('/export/excel/sales')
 def export_excel_sales():
@@ -1303,8 +1171,11 @@ def export_excel_sales():
         flash(f'Error al exportar datos: {str(e)}', 'danger')
         return redirect(url_for('sales'))
 
-@app.route('/metas_vendedor', methods=['GET', 'POST'])
-def metas_vendedor():
+# FUNCIONALIDAD DESHABILITADA - Las plantillas meta.html y metas_vendedor.html no existen
+# Esta función fue comentada porque el proyecto clonado solo necesita la conexión a Odoo y ventas
+"""
+@app.route('/metas_vendedor_DISABLED', methods=['GET', 'POST'])
+def metas_vendedor_disabled():
     if 'username' not in session:
         return redirect(url_for('login'))
 
@@ -1314,128 +1185,16 @@ def metas_vendedor():
     if not is_admin:
         flash('No tienes permiso para acceder a esta página.', 'warning')
         return redirect(url_for('dashboard'))
-    # --- Fin Verificación ---
+    # Código de la función original comentado...
+"""
 
-    # Obtener meses y líneas comerciales para los filtros
-    fecha_actual = datetime.now()
-    año_actual = fecha_actual.year
-    meses_disponibles = get_meses_del_año(año_actual)
-    lineas_comerciales_estaticas = [
-        {'nombre': 'PETMEDICA', 'id': 'petmedica'},
-        {'nombre': 'AGROVET', 'id': 'agrovet'},
-        {'nombre': 'PET NUTRISCIENCE', 'id': 'pet_nutriscience'},
-        {'nombre': 'AVIVET', 'id': 'avivet'},
-        {'nombre': 'OTROS', 'id': 'otros'},
-        {'nombre': 'TERCEROS', 'id': 'terceros'},
-        {'nombre': 'INTERPET', 'id': 'interpet'},
-    ]
-    equipos_definidos = [
-        {'id': 'petmedica', 'nombre': 'PETMEDICA'},
-        {'id': 'agrovet', 'nombre': 'AGROVET'},
-        {'id': 'pet_nutriscience', 'nombre': 'PET NUTRISCIENCE'},
-        {'id': 'avivet', 'nombre': 'AVIVET'},
-        {'id': 'otros', 'nombre': 'OTROS'},
-        {'id': 'terceros', 'nombre': 'TERCEROS'},
-        {'id': 'interpet', 'nombre': 'INTERPET'},
-    ]
-
-    # Determinar mes y línea seleccionados (desde form o por defecto)
-    mes_seleccionado = request.form.get('mes_seleccionado', fecha_actual.strftime('%Y-%m'))
-    linea_seleccionada = request.form.get('linea_seleccionada', lineas_comerciales_estaticas[0]['id'])
-
-    if request.method == 'POST':
-        # --- 1. GUARDAR ASIGNACIONES DE EQUIPOS ---
-        equipo_actualizado_id = request.form.get('guardar_equipo') # Para el mensaje flash
-        todos_los_vendedores_para_guardar = data_manager.get_all_sellers()
-        equipos_guardados = gs_manager.read_equipos()
-
-        for equipo in equipos_definidos:
-            campo_vendedores = f'vendedores_{equipo["id"]}'
-            if campo_vendedores in request.form:
-                vendedores_str = request.form.get(campo_vendedores, '')
-                if vendedores_str:
-                    vendedores_ids = [int(vid) for vid in vendedores_str.split(',') if vid.isdigit()]
-                    equipos_guardados[equipo['id']] = vendedores_ids
-                else:
-                    equipos_guardados[equipo['id']] = []
-        gs_manager.write_equipos(equipos_guardados, todos_los_vendedores_para_guardar)
-
-        # --- 2. GUARDAR TODAS LAS METAS (ESTRUCTURA PIVOT) ---
-        metas_vendedores_historicas = gs_manager.read_metas()
-        
-        for equipo in equipos_definidos:
-            equipo_id = equipo['id']
-            if equipo_id not in metas_vendedores_historicas:
-                metas_vendedores_historicas[equipo_id] = {}
-
-            vendedores_ids_en_equipo = equipos_guardados.get(equipo_id, [])
-            for vendedor_id in vendedores_ids_en_equipo:
-                vendedor_id_str = str(vendedor_id)
-                if vendedor_id_str not in metas_vendedores_historicas[equipo_id]:
-                    metas_vendedores_historicas[equipo_id][vendedor_id_str] = {}
-
-                for mes in meses_disponibles:
-                    mes_key = mes['key']
-                    # No es necesario crear la clave del mes aquí, se crea si hay datos
-
-                    meta_valor_str = request.form.get(f'meta_{equipo_id}_{vendedor_id_str}_{mes_key}')
-                    meta_ipn_valor_str = request.form.get(f'meta_ipn_{equipo_id}_{vendedor_id_str}_{mes_key}')
-
-                    # Convertir a float, manejar valores vacíos como None para no guardar ceros innecesarios
-                    meta = float(meta_valor_str) if meta_valor_str else None
-                    meta_ipn = float(meta_ipn_valor_str) if meta_ipn_valor_str else None
-
-                    if meta is not None or meta_ipn is not None:
-                        # Si la clave del mes no existe, créala
-                        if mes_key not in metas_vendedores_historicas[equipo_id][vendedor_id_str]:
-                             metas_vendedores_historicas[equipo_id][vendedor_id_str][mes_key] = {}
-                        metas_vendedores_historicas[equipo_id][vendedor_id_str][mes_key] = {
-                            'meta': meta or 0.0,
-                            'meta_ipn': meta_ipn or 0.0
-                        }
-                    # Si ambos son None y la clave existe, se elimina para limpiar el JSON
-                    elif mes_key in metas_vendedores_historicas[equipo_id][vendedor_id_str]:
-                        del metas_vendedores_historicas[equipo_id][vendedor_id_str][mes_key]
-
-        gs_manager.write_metas(metas_vendedores_historicas)
-        
-        if equipo_actualizado_id:
-            flash(f'Miembros del equipo actualizados. Ahora puedes asignar sus metas.', 'info')
-        else:
-            flash('Equipos y metas guardados correctamente.', 'success')
-
-        # Redirigir con los parámetros para recargar la página con los filtros correctos
-        return redirect(url_for('metas_vendedor'))
-
-    # GET o después de POST
-    todos_los_vendedores = data_manager.get_all_sellers()
-    vendedores_por_id = {v['id']: v for v in todos_los_vendedores}
-    equipos_guardados = gs_manager.read_equipos()
-
-    # Construir la estructura de datos para la plantilla
-    equipos_con_vendedores = []
-    for equipo_def in equipos_definidos:
-        equipo_id = equipo_def['id']
-        vendedores_ids = equipos_guardados.get(equipo_id, [])
-        vendedores_de_equipo = [vendedores_por_id[vid] for vid in vendedores_ids if vid in vendedores_por_id]
-        
-        equipos_con_vendedores.append({
-            'id': equipo_id,
-            'nombre': equipo_def['nombre'],
-            'vendedores_ids': [str(vid) for vid in vendedores_ids], # Para Tom-Select
-            'vendedores': sorted(vendedores_de_equipo, key=lambda v: v['name']) # Para la tabla
-        })
-
-    # Para la vista, pasamos todas las metas cargadas
-    metas_guardadas = gs_manager.read_metas()
-
-    return render_template('metas_vendedor.html',
-                           meses_disponibles=meses_disponibles,
-                           lineas_comerciales=lineas_comerciales_estaticas,
-                           equipos_con_vendedores=equipos_con_vendedores,
-                           todos_los_vendedores=todos_los_vendedores,
-                           metas_guardadas=metas_guardadas,
-                           is_admin=is_admin) # Pasar el flag a la plantilla
+@app.route('/metas_vendedor', methods=['GET', 'POST'])
+def metas_vendedor():
+    """Ruta deshabilitada - plantilla no existe en este proyecto"""
+    if 'username' not in session:
+        return redirect(url_for('login'))
+    flash('Esta funcionalidad no está disponible en este proyecto.', 'warning')
+    return redirect(url_for('dashboard'))
 
 @app.route('/export/dashboard/details')
 def export_dashboard_details():

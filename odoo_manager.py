@@ -6,6 +6,10 @@ import socket
 import os
 import pandas as pd
 from datetime import datetime, timedelta
+from dotenv import load_dotenv
+
+# Cargar variables de entorno forzando sobrescritura
+load_dotenv(override=True)
 
 class OdooManager:
     def get_commercial_lines_stacked_data(self, date_from=None, date_to=None, linea_id=None, partner_id=None):
