@@ -12,6 +12,8 @@ import calendar
 from datetime import datetime, timedelta
 from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
 from openpyxl.utils import get_column_letter
+import hashlib
+import pickle
 
 load_dotenv(override=True)
 app = Flask(__name__)
@@ -29,6 +31,57 @@ ADMIN_USERS = [email.strip() for email in ADMIN_USERS if email.strip()]
 # Configuración para deshabilitar cache de templates
 app.config['TEMPLATES_AUTO_RELOAD'] = True
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
+
+# --- Sistema de Caché para Datos de Meses ---
+CACHE_DIR = os.path.join(os.path.dirname(__file__), '__pycache__', 'dashboard_cache')
+os.makedirs(CACHE_DIR, exist_ok=True)
+
+def get_cache_key(año, mes):
+    """Genera una clave única para el caché basada en año y mes."""
+    return f"dashboard_data_{año}_{mes:02d}"
+
+def is_current_month(año, mes):
+    """Verifica si el mes solicitado es el mes actual."""
+    hoy = datetime.now()
+    return año == hoy.year and mes == hoy.month
+
+def get_cached_data(año, mes):
+    """Obtiene datos del caché si existen y son válidos."""
+    # Para el mes actual, no usar caché (siempre datos frescos)
+    if is_current_month(año, mes):
+        return None
+    
+    cache_key = get_cache_key(año, mes)
+    cache_file = os.path.join(CACHE_DIR, f"{cache_key}.pkl")
+    
+    if not os.path.exists(cache_file):
+        return None
+    
+    try:
+        # Para meses pasados, el caché es válido indefinidamente
+        with open(cache_file, 'rb') as f:
+            cached_data = pickle.load(f)
+        print(f"✅ Datos cargados desde caché para {año}-{mes:02d}")
+        return cached_data
+    except Exception as e:
+        print(f"⚠️ Error al leer caché: {e}")
+        return None
+
+def save_to_cache(año, mes, data):
+    """Guarda datos en el caché."""
+    # No cachear el mes actual
+    if is_current_month(año, mes):
+        return
+    
+    cache_key = get_cache_key(año, mes)
+    cache_file = os.path.join(CACHE_DIR, f"{cache_key}.pkl")
+    
+    try:
+        with open(cache_file, 'wb') as f:
+            pickle.dump(data, f)
+        print(f"💾 Datos guardados en caché para {año}-{mes:02d}")
+    except Exception as e:
+        print(f"⚠️ Error al guardar en caché: {e}")
 
 # --- Inicialización de Managers ---
 try:
@@ -283,6 +336,8 @@ def dashboard():
         mes_nombre = mes_obj['nombre'] if mes_obj else "Mes Desconocido"
         
         año_sel, mes_sel = mes_seleccionado.split('-')
+        año_sel_int = int(año_sel)
+        mes_sel_int = int(mes_sel)
         
         # Determinar el día a usar para los cálculos y la fecha final
         if dia_fin_param:
@@ -300,12 +355,29 @@ def dashboard():
                 dia_actual = fecha_actual.day
             else:
                 # Mes pasado: usar último día del mes
-                ultimo_dia_mes = calendar.monthrange(int(año_sel), int(mes_sel))[1]
+                ultimo_dia_mes = calendar.monthrange(año_sel_int, mes_sel_int)[1]
                 dia_actual = ultimo_dia_mes
             fecha_fin = f"{año_sel}-{mes_sel}-{str(dia_actual).zfill(2)}"
 
         fecha_inicio = f"{año_sel}-{mes_sel}-01"
         # --- FIN DE LA NUEVA LÓGICA ---
+
+        # Intentar obtener datos del caché
+        cached_result = get_cached_data(año_sel_int, mes_sel_int)
+        if cached_result:
+            print(f"🚀 Cargando datos desde caché para {mes_seleccionado} (carga instantánea)")
+            # Agregar datos que no se cachean (sesión del usuario, etc.)
+            cached_result['is_admin'] = is_admin
+            cached_result['meses_disponibles'] = meses_disponibles
+            cached_result['mes_seleccionado'] = mes_seleccionado
+            cached_result['mes_nombre'] = mes_nombre
+            cached_result['desde_cache'] = True  # Indicador para el template
+            return render_template('dashboard_clean.html', **cached_result)
+        
+        if is_current_month(año_sel_int, mes_sel_int):
+            print(f"🔄 Mes actual ({mes_seleccionado}): Obteniendo datos actualizados desde Odoo...")
+        else:
+            print(f"🔄 Primera carga de {mes_seleccionado}, generando caché para futuras consultas...")
 
         # Obtener metas del mes seleccionado desde la sesión
         metas_historicas = gs_manager.read_metas_por_linea()
@@ -345,9 +417,36 @@ def dashboard():
             
             print(f"📊 Obtenidas {len(sales_data)} líneas de ventas para el dashboard")
             
+            # Obtener clientes históricos (cartera activa) - clientes que han comprado desde inicio del año hasta el mes seleccionado
+            try:
+                # Calcular fecha desde inicio del año hasta el final del mes seleccionado
+                fecha_inicio_ano = datetime(año_actual, 1, 1).strftime('%Y-%m-%d')
+                ultimo_dia_mes_sel = calendar.monthrange(int(año_sel), int(mes_sel))[1]
+                fecha_fin_mes_sel = f"{int(año_sel):04d}-{int(mes_sel):02d}-{ultimo_dia_mes_sel:02d}"
+                
+                sales_historico = data_manager.get_sales_lines(
+                    date_from=fecha_inicio_ano,
+                    date_to=fecha_fin_mes_sel,
+                    limit=20000
+                )
+                
+                # Contar clientes únicos históricos
+                clientes_historicos = set()
+                for sale in sales_historico:
+                    partner_name = sale.get('partner_name', '').strip()
+                    if partner_name:
+                        clientes_historicos.add(partner_name)
+                
+                total_clientes = len(clientes_historicos)
+                print(f"👥 Total de clientes en cartera activa (año {año_actual}): {total_clientes}")
+            except Exception as e:
+                print(f"⚠️ Error obteniendo cartera de clientes: {e}")
+                total_clientes = 0
+            
         except Exception as e:
             print(f"⚠️ Error obteniendo datos de Odoo: {e}")
             sales_data = []
+            total_clientes = 0
         
         # Procesar datos de ventas por línea comercial
         datos_lineas = []
@@ -380,6 +479,8 @@ def dashboard():
         ciclo_vida_por_producto = {}
         ventas_por_ciclo_vida = {}
         ventas_por_forma = {}
+        clientes_por_linea = {}  # Nueva variable para contar clientes únicos por línea
+        
         for sale in sales_data:
             # Excluir VENTA INTERNACIONAL (exportaciones)
             linea_comercial = sale.get('commercial_line_national_id')
@@ -405,6 +506,13 @@ def dashboard():
                 # Sumar a ventas totales por línea
                 if nombre_linea_actual:
                     ventas_por_linea[nombre_linea_actual] = ventas_por_linea.get(nombre_linea_actual, 0) + balance_float
+                    
+                    # Contar clientes únicos por línea comercial
+                    partner_name = sale.get('partner_name', '').strip()
+                    if partner_name:
+                        if nombre_linea_actual not in clientes_por_linea:
+                            clientes_por_linea[nombre_linea_actual] = set()
+                        clientes_por_linea[nombre_linea_actual].add(partner_name)
                 
                 # LÓGICA FINAL: Sumar si la RUTA (route_id) coincide con los valores especificados
                 ruta = sale.get('route_id')
@@ -432,9 +540,199 @@ def dashboard():
                 ciclo_vida_grafico = ciclo_vida if ciclo_vida else 'No definido'
                 ventas_por_ciclo_vida[ciclo_vida_grafico] = ventas_por_ciclo_vida.get(ciclo_vida_grafico, 0) + balance_float
 
-        print(f"💰 Ventas por línea comercial: {ventas_por_linea}")
-        print(f"📦 Ventas por Vencimiento (Ciclo de Vida): {ventas_por_ruta}")
-        print(f"✨ Ventas IPN (Productos Nuevos): {ventas_ipn_por_linea}")
+        # --- Calcular cobertura de clientes ---
+        # Primero, obtener el canal de cada cliente desde res.partner
+        print("🔍 Obteniendo canales de clientes desde res.partner...")
+        clientes_con_canal = {}  # {partner_id: nombre_canal}
+        
+        # Obtener IDs únicos de clientes
+        partner_ids = set()
+        for sale in sales_data:
+            partner_info = sale.get('partner_id')
+            if partner_info and isinstance(partner_info, list):
+                partner_ids.add(partner_info[0])
+        
+        for sale in sales_historico:
+            partner_info = sale.get('partner_id')
+            if partner_info and isinstance(partner_info, list):
+                partner_ids.add(partner_info[0])
+        
+        # Obtener información de canales de los clientes
+        if partner_ids:
+            try:
+                partners_data = data_manager.models.execute_kw(
+                    data_manager.db, data_manager.uid, data_manager.password,
+                    'res.partner', 'read',
+                    [list(partner_ids)],
+                    {'fields': ['id', 'name', 'sales_channel_id']}
+                )
+                
+                for partner in partners_data:
+                    partner_id = partner['id']
+                    canal_info = partner.get('sales_channel_id')
+                    if canal_info and isinstance(canal_info, list) and len(canal_info) > 1:
+                        clientes_con_canal[partner_id] = canal_info[1].strip()
+                
+                print(f"✅ Obtenidos canales de {len(clientes_con_canal)} clientes")
+            except Exception as e:
+                print(f"⚠️ Error obteniendo canales de clientes: {e}")
+        
+        # Contar clientes activos únicos en el periodo
+        clientes_activos = set()
+        clientes_por_canal = {}  # Diccionario para rastrear clientes únicos por canal
+        clientes_historicos_por_canal = {}  # Cartera total por canal
+        
+        for sale in sales_data:
+            partner_info = sale.get('partner_id')
+            if not partner_info or not isinstance(partner_info, list):
+                continue
+                
+            partner_id = partner_info[0]
+            partner_name = partner_info[1] if len(partner_info) > 1 else str(partner_id)
+            
+            # Obtener canal del cliente (no de la transacción)
+            nombre_canal = clientes_con_canal.get(partner_id, 'Sin Canal')
+            
+            # Excluir VENTA INTERNACIONAL
+            if 'INTERNACIONAL' in nombre_canal.upper():
+                continue
+            
+            clientes_activos.add(partner_name)
+            
+            if nombre_canal not in clientes_por_canal:
+                clientes_por_canal[nombre_canal] = set()
+            clientes_por_canal[nombre_canal].add(partner_name)
+        
+        # Obtener cartera histórica por canal
+        for sale in sales_historico:
+            partner_info = sale.get('partner_id')
+            if not partner_info or not isinstance(partner_info, list):
+                continue
+                
+            partner_id = partner_info[0]
+            partner_name = partner_info[1] if len(partner_info) > 1 else str(partner_id)
+            
+            # Obtener canal del cliente (no de la transacción)
+            nombre_canal = clientes_con_canal.get(partner_id, 'Sin Canal')
+            
+            # Excluir VENTA INTERNACIONAL
+            if 'INTERNACIONAL' in nombre_canal.upper():
+                continue
+            
+            if nombre_canal not in clientes_historicos_por_canal:
+                clientes_historicos_por_canal[nombre_canal] = set()
+            clientes_historicos_por_canal[nombre_canal].add(partner_name)
+        
+        num_clientes_activos = len(clientes_activos)
+        cobertura_clientes = (num_clientes_activos / total_clientes * 100) if total_clientes > 0 else 0
+        print(f"📊 Cobertura de clientes: {num_clientes_activos} activos de {total_clientes} totales = {cobertura_clientes:.1f}%")
+        
+        # Crear tabla de cobertura por canal (desde res.partner.sales_channel_id)
+        datos_cobertura_canal = []
+        total_cartera_todos = 0
+        total_activos_todos = 0
+        
+        for canal in sorted(clientes_historicos_por_canal.keys()):
+            cartera_canal = len(clientes_historicos_por_canal[canal])
+            activos_canal = len(clientes_por_canal.get(canal, set()))
+            cobertura_canal = (activos_canal / cartera_canal * 100) if cartera_canal > 0 else 0
+            
+            datos_cobertura_canal.append({
+                'canal': canal,
+                'cartera': cartera_canal,
+                'activos': activos_canal,
+                'cobertura': cobertura_canal
+            })
+            
+            total_cartera_todos += cartera_canal
+            total_activos_todos += activos_canal
+        
+        # Agregar fila de totales
+        cobertura_total = (total_activos_todos / total_cartera_todos * 100) if total_cartera_todos > 0 else 0
+        datos_cobertura_canal.append({
+            'canal': 'TOTAL GENERAL',
+            'cartera': total_cartera_todos,
+            'activos': total_activos_todos,
+            'cobertura': cobertura_total,
+            'es_total': True
+        })
+        
+        print(f"📊 Cobertura por canal (res.partner.sales_channel_id): {len(datos_cobertura_canal)-1} canales procesados")
+
+        # --- CÁLCULO DE FRECUENCIA DE COMPRA POR LÍNEA COMERCIAL ---
+        # Usa la misma agrupación que "Análisis de Clientes por Línea Comercial"
+        # Frecuencia = Total de Pedidos Únicos / Número de Clientes Activos
+        
+        print(f"📈 Calculando frecuencia de compra por línea comercial...")
+        
+        # Diccionarios para almacenar pedidos únicos por línea (usando clientes_por_linea ya existente)
+        pedidos_unicos_por_linea = {}  # {linea: set(move_ids)}
+        
+        for sale in sales_data:
+            # Obtener línea comercial (misma lógica que ventas_por_linea)
+            linea_comercial = sale.get('commercial_line_national_id')
+            nombre_linea_actual = None
+            
+            if linea_comercial and isinstance(linea_comercial, list) and len(linea_comercial) > 1:
+                nombre_linea_original = linea_comercial[1].upper()
+                if 'VENTA INTERNACIONAL' in nombre_linea_original:
+                    continue
+                nombre_linea_actual = normalizar_linea_comercial(nombre_linea_original)
+            
+            # También filtrar por canal de ventas
+            canal_ventas = sale.get('sales_channel_id')
+            if canal_ventas and isinstance(canal_ventas, list) and len(canal_ventas) > 1:
+                nombre_canal = canal_ventas[1].upper()
+                if 'VENTA INTERNACIONAL' in nombre_canal or 'INTERNACIONAL' in nombre_canal:
+                    continue
+            
+            if not nombre_linea_actual:
+                continue
+            
+            # Inicializar set si no existe
+            if nombre_linea_actual not in pedidos_unicos_por_linea:
+                pedidos_unicos_por_linea[nombre_linea_actual] = set()
+            
+            # Agregar pedido único (move_id)
+            move_id = sale.get('move_id')
+            if move_id:
+                if isinstance(move_id, list):
+                    move_id = move_id[0]
+                pedidos_unicos_por_linea[nombre_linea_actual].add(move_id)
+        
+        # Calcular frecuencia por línea comercial usando clientes_por_linea ya existente
+        datos_frecuencia_linea = []
+        total_pedidos_general = 0
+        total_clientes_general = 0
+        
+        # Usar las mismas líneas que ya están en clientes_por_linea
+        for linea in sorted(clientes_por_linea.keys()):
+            num_clientes = len(clientes_por_linea[linea])
+            num_pedidos = len(pedidos_unicos_por_linea.get(linea, set()))
+            frecuencia = (num_pedidos / num_clientes) if num_clientes > 0 else 0
+            
+            datos_frecuencia_linea.append({
+                'linea': linea,
+                'clientes_activos': num_clientes,
+                'pedidos': num_pedidos,
+                'frecuencia': frecuencia
+            })
+            
+            total_pedidos_general += num_pedidos
+            total_clientes_general += num_clientes
+        
+        # Agregar fila de totales
+        frecuencia_total = (total_pedidos_general / total_clientes_general) if total_clientes_general > 0 else 0
+        datos_frecuencia_linea.append({
+            'linea': 'TOTAL GENERAL',
+            'clientes_activos': total_clientes_general,
+            'pedidos': total_pedidos_general,
+            'frecuencia': frecuencia_total,
+            'es_total': True
+        })
+        
+        print(f"📊 Frecuencia de compra: {len(datos_frecuencia_linea)-1} líneas comerciales procesadas")
+        print(f"📊 Frecuencia general: {frecuencia_total:.2f} pedidos/cliente")
 
         # --- Procesamiento de datos para gráficos (después del bucle) ---
 
@@ -504,6 +802,26 @@ def dashboard():
             total_venta_pn += venta_pn
             total_vencimiento += vencimiento
         
+        # --- Preparar datos para tabla de clientes por línea comercial ---
+        datos_clientes_por_linea = []
+        for linea in lineas_comerciales_filtradas:
+            nombre_linea = linea['nombre'].upper()
+            venta = ventas_por_linea.get(nombre_linea, 0)
+            
+            # Obtener el número de clientes únicos
+            clientes_unicos = clientes_por_linea.get(nombre_linea, set())
+            num_clientes = len(clientes_unicos)
+            
+            # Calcular ticket promedio
+            ticket_promedio = (venta / num_clientes) if num_clientes > 0 else 0
+            
+            datos_clientes_por_linea.append({
+                'nombre': linea['nombre'],
+                'venta': venta,
+                'num_clientes': num_clientes,
+                'ticket_promedio': ticket_promedio
+            })
+        
         # --- 2. Calcular KPIs ---
         # Días laborables restantes (Lunes a Sábado)
         dias_restantes = 0
@@ -531,7 +849,10 @@ def dashboard():
             'vencimiento_6_meses': total_vencimiento,
             'avance_diario_total': ((total_venta / total_meta * 100) / dia_actual) if total_meta > 0 and dia_actual > 0 else 0,
             'avance_diario_ipn': ((total_venta_pn / total_meta_pn * 100) / dia_actual) if total_meta_pn > 0 and dia_actual > 0 else 0,
-            'ritmo_diario_requerido': ritmo_diario_requerido
+            'ritmo_diario_requerido': ritmo_diario_requerido,
+            'total_clientes_cartera': total_clientes,
+            'clientes_activos': num_clientes_activos,
+            'cobertura_clientes': cobertura_clientes
         }
 
         # --- Avance lineal: proyección de cierre y faltante ---
@@ -576,8 +897,6 @@ def dashboard():
                 'ciclo_vida': ciclo_vida_por_producto.get(nombre_producto, 'No definido')
             })
         
-        print(f"🏆 Top 7 productos por ventas: {[p['nombre'] for p in datos_productos]}")
-        
         # 4. Ordenar datos para el gráfico de Ciclo de Vida
         # Convertir a lista ordenada por ventas
         datos_ciclo_vida = []
@@ -586,8 +905,6 @@ def dashboard():
                 'ciclo': ciclo,
                 'venta': venta
             })
-        
-        print(f"📈 Ventas por Ciclo de Vida: {datos_ciclo_vida}")
         
         # --- INICIO: LÓGICA PARA LA TABLA DEL EQUIPO ECOMMERCE ---
         datos_ecommerce = []
@@ -650,24 +967,41 @@ def dashboard():
         # Ordenar los datos de la tabla por venta descendente
         datos_lineas_tabla_sorted = sorted(datos_lineas, key=lambda x: x['venta'], reverse=True)
 
-        return render_template('dashboard_clean.html',
-                             meses_disponibles=meses_disponibles,
-                             mes_seleccionado=mes_seleccionado,
-                             mes_nombre=mes_nombre,
-                             dia_actual=dia_actual,
-                             kpis=kpis,
-                             datos_lineas=datos_lineas, # Para gráficos, mantener el orden original (alfabético por nombre)
-                             datos_lineas_tabla=datos_lineas_tabla_sorted, # Para la tabla, usar los datos ordenados por venta
-                             datos_productos=datos_productos,
-                             datos_ciclo_vida=datos_ciclo_vida if 'datos_ciclo_vida' in locals() else [],
-                             fecha_actual=fecha_actual,
-                             avance_lineal_pct=avance_lineal_pct,
-                             faltante_meta=faltante_meta,
-                             avance_lineal_ipn_pct=avance_lineal_ipn_pct,
-                             faltante_meta_ipn=faltante_meta_ipn,
-                             datos_ecommerce=datos_ecommerce,
-                             kpis_ecommerce=kpis_ecommerce,
-                             is_admin=is_admin) # Pasar el flag a la plantilla
+        # Preparar los datos para renderizar
+        render_data = {
+            'meses_disponibles': meses_disponibles,
+            'mes_seleccionado': mes_seleccionado,
+            'mes_nombre': mes_nombre,
+            'dia_actual': dia_actual,
+            'kpis': kpis,
+            'datos_lineas': datos_lineas,
+            'datos_lineas_tabla': datos_lineas_tabla_sorted,
+            'datos_clientes_por_linea': datos_clientes_por_linea,
+            'datos_cobertura_canal': datos_cobertura_canal,
+            'datos_frecuencia_linea': datos_frecuencia_linea,
+            'datos_productos': datos_productos,
+            'datos_ciclo_vida': datos_ciclo_vida if 'datos_ciclo_vida' in locals() else [],
+            'fecha_actual': fecha_actual,
+            'avance_lineal_pct': avance_lineal_pct,
+            'faltante_meta': faltante_meta,
+            'avance_lineal_ipn_pct': avance_lineal_ipn_pct,
+            'faltante_meta_ipn': faltante_meta_ipn,
+            'datos_ecommerce': datos_ecommerce,
+            'kpis_ecommerce': kpis_ecommerce,
+            'is_admin': is_admin,
+            'desde_cache': False  # Datos frescos
+        }
+        
+        # Guardar en caché (solo si NO es el mes actual)
+        if not is_current_month(año_sel_int, mes_sel_int):
+            # Crear una copia sin datos específicos del usuario
+            cache_data = render_data.copy()
+            cache_data.pop('is_admin', None)  # No cachear datos de sesión
+            cache_data['desde_cache'] = False  # Este valor se sobrescribirá al leer del caché
+            save_to_cache(año_sel_int, mes_sel_int, cache_data)
+            print(f"✅ Datos guardados en caché. Próximas consultas serán instantáneas.")
+
+        return render_template('dashboard_clean.html', **render_data)
     
     except Exception as e:
         flash(f'Error al obtener datos del dashboard: {str(e)}', 'danger')
@@ -683,7 +1017,10 @@ def dashboard():
             'porcentaje_avance_ipn': 0,
             'vencimiento_6_meses': 0,
             'avance_diario_total': 0,
-            'avance_diario_ipn': 0
+            'avance_diario_ipn': 0,
+            'total_clientes_cartera': 0,
+            'clientes_activos': 0,
+            'cobertura_clientes': 0
         }
         
         return render_template('dashboard_clean.html',
@@ -697,6 +1034,7 @@ def dashboard():
                              kpis=kpis_default,
                              datos_lineas=[], # Se mantiene vacío en caso de error
                              datos_lineas_tabla=[],
+                             datos_clientes_por_linea=[], # Nueva tabla vacía en caso de error
                              datos_productos=[],
                              datos_ciclo_vida=[],
                              fecha_actual=fecha_actual,

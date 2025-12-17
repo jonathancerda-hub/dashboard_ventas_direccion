@@ -41,6 +41,13 @@
     </div>
 </div>
 
+<script>
+// Función para cambiar mes - Definida temprano para el selector
+function cambiarMes(mesSeleccionado) {
+    window.location.href = `?mes=${mesSeleccionado}`;
+}
+</script>
+
 <!-- Dashboard principal -->
 <div class="dashboard-container">
     <!-- Fila superior - KPIs principales -->
@@ -77,32 +84,9 @@
         <!-- Proyección lineal y faltante movidas a Avance Diario (ver más abajo) -->
     </div>
     
-    <!-- Avance diario - Solo 4 tarjetas específicas -->
-    <div class="avance-diario-grid">
-        <div class="avance-card">
-            <div class="avance-label">Avance Diario Acumulado</div>
-            <div class="avance-value">{% if avance_lineal_pct is defined and avance_lineal_pct > 0 %}{{ "{:.1f} %".format(avance_lineal_pct) }}{% else %}-{% endif %}</div>
-        </div>
-
-        <div class="avance-card">
-            <div class="avance-label">Brecha Comercial (S/)</div>
-            <div class="avance-value">{% if faltante_meta is defined and faltante_meta > 0 %}S/ {{ "{:,.0f}".format(faltante_meta) }}{% else %}-{% endif %}</div>
-        </div>
-
-        <div class="avance-card">
-            <div class="avance-label">Avance Diario IPN Acumulado</div>
-            <div class="avance-value">{% if avance_lineal_ipn_pct is defined and avance_lineal_ipn_pct > 0 %}{{ "{:.1f} %".format(avance_lineal_ipn_pct) }}{% else %}-{% endif %}</div>
-        </div>
-
-        <div class="avance-card">
-            <div class="avance-label">Brecha Comercial IPN (S/)</div>
-            <div class="avance-value">{% if faltante_meta_ipn is defined and faltante_meta_ipn > 0 %}S/ {{ "{:,.0f}".format(faltante_meta_ipn) }}{% else %}-{% endif %}</div>
-        </div>
-    </div>
-    
-    <!-- FILA 1: TABLA PRINCIPAL A ANCHO COMPLETO -->
+    <!-- FILA 1: TABLA PRINCIPAL COMENTADA - Los datos siguen cargándose en el backend -->
+    <!-- 
     <div class="main-table-row">
-        <!-- Tabla de líneas comerciales (IZQUIERDA - MÁS ANCHA) -->
         <div class="tabla-container">
             <div class="tabla-header">
                 <h3>Meta LC Total y Venta por Línea Comercial Local</h3>
@@ -146,7 +130,6 @@
                         <td><strong>{{ "{:,.0f}".format(linea.vencimiento_6_meses) }}</strong></td>
                     </tr>
                     {% endfor %}
-                    <!-- Fila de TOTAL -->
                     <tr class="fila-total">
                         <td><strong>Total</strong></td>
                         <td><strong>{{ "{:,.0f}".format(kpis.meta_total) }}</strong></td>
@@ -162,82 +145,318 @@
             </table>
         </div>
     </div>
+    -->
 
-    <!-- FILA 2: TABLA ECOMMERCE (IZQUIERDA) + GRÁFICO DONUT (DERECHA) -->
+    <!-- FILA 2: DOS TABLAS LADO A LADO -->
     <div class="secondary-content-row">
-        <!-- Tabla ECOMMERCE (si hay datos) -->
-        {% if datos_ecommerce %}
+        <!-- Tabla de Líneas Comerciales (IZQUIERDA) -->
+        {% if datos_lineas_tabla %}
         <div class="tabla-container tabla-ecommerce">
             <div class="tabla-header">
-                <h3>Avance Equipo ECOMMERCE</h3>
+                <h3>Ventas por Línea Comercial</h3>
             </div>
             <table class="tabla-avance">
                 <thead>
                     <tr>
-                        <th style="width: 40%;">Línea Comercial</th>
-                        <th style="width: 20%;">Venta</th>
-                        <th style="width: 20%;">% Total Vta.</th>
-                        <th style="width: 10%;">Meta</th>
-                        <th style="width: 10%;">% Avance</th>
+                        <th style="width: 50%;">Línea Comercial</th>
+                        <th style="width: 25%;">s/ Facturado</th>
+                        <th style="width: 25%;">% Total Vta.</th>
                     </tr>
                 </thead>
                 <tbody>
-                    {% for linea in datos_ecommerce %}
+                    {% for linea in datos_lineas_tabla %}
                     <tr>
                         <td>{{ linea.nombre }}</td>
                         <td>{{ "{:,.0f}".format(linea.venta) }}</td>
                         <td class="porcentaje">{{ "%.1f%%"|format(linea.porcentaje_sobre_total) }}</td>
-                        <td>-</td>
-                        <td>-</td>
                     </tr>
                     {% endfor %}
                     <tr class="fila-total">
-                        <td><strong>Total Equipo</strong></td>
-                        <td><strong>{{ "{:,.0f}".format(kpis_ecommerce.venta_total) }}</strong></td>
+                        <td><strong>Total</strong></td>
+                        <td><strong>{{ "{:,.0f}".format(kpis.venta_total) }}</strong></td>
                         <td class="porcentaje"><strong>100.0%</strong></td>
-                        <td><strong>{{ "{:,.0f}".format(kpis_ecommerce.meta_total) }}</strong></td>
-                        <td class="porcentaje"><strong>{{ "{:.1f}%".format(kpis_ecommerce.porcentaje_avance) }}</strong></td>
                     </tr>
                 </tbody>
             </table>
         </div>
         {% endif %}
 
-        <!-- Gráfico Ciclo de Vida (DERECHA) -->
-        <div class="grafico-ciclo-vida">
-            <h3>Venta por tipo de Producto</h3>
-            <div class="donut-container">
-                <div id="grafico-donut" style="width: 100%; height: 100%;"></div>
+        <!-- Tabla de Clientes por Línea Comercial (DERECHA) -->
+        {% if datos_clientes_por_linea %}
+        <div class="tabla-container tabla-ecommerce">
+            <div class="tabla-header">
+                <h3>Análisis de Clientes por Línea Comercial</h3>
+            </div>
+            <table class="tabla-avance">
+                <thead>
+                    <tr>
+                        <th style="width: 40%;">Línea Comercial</th>
+                        <th style="width: 20%;">s/ Facturado</th>
+                        <th style="width: 20%;">N° Clientes</th>
+                        <th style="width: 20%;">Ticket/Cliente</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for linea in datos_clientes_por_linea %}
+                    <tr>
+                        <td>{{ linea.nombre }}</td>
+                        <td>{{ "{:,.0f}".format(linea.venta) }}</td>
+                        <td>{{ linea.num_clientes }}</td>
+                        <td>{{ "{:,.0f}".format(linea.ticket_promedio) }}</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+        {% endif %}
+    </div>
+    
+    <!-- Gráfico de Cobertura de Clientes -->
+    <div class="grafico-container" style="margin-top: 30px;">
+        <div class="tabla-header">
+            <h3>📊 Cobertura de Clientes</h3>
+        </div>
+        
+        <!-- Grid de 2 columnas -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 25px; margin-top: 20px;">
+            <!-- Columna 1: Gauge de cobertura SVG mejorado -->
+            <div class="grafico-container" style="margin: 0;">
+                <div class="tabla-header" style="margin-bottom: 15px;">
+                    <h4 style="margin: 0; font-size: 16px;">Indicador General</h4>
+                </div>
+                <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px;">
+                    <div class="cobertura-gauge" style="position: relative;">
+                        <svg width="320" height="320" viewBox="0 0 320 320" style="filter: drop-shadow(0 4px 6px rgba(0,0,0,0.1));">
+                            <!-- Círculo de fondo con gradiente -->
+                            <defs>
+                                <linearGradient id="gaugeGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                                    <stop offset="0%" style="stop-color:#f0f0f0;stop-opacity:1" />
+                                    <stop offset="100%" style="stop-color:#e0e0e0;stop-opacity:1" />
+                                </linearGradient>
+                                
+                                <!-- Gradiente para el progreso -->
+                                <linearGradient id="progressGradient" x1="0%" y1="0%" x2="100%" y2="0%">
+                                    <stop offset="0%" style="stop-color:#ff4d4f;stop-opacity:1" />
+                                    <stop offset="50%" style="stop-color:#ff7a45;stop-opacity:1" />
+                                    <stop offset="65%" style="stop-color:#faad14;stop-opacity:1" />
+                                    <stop offset="100%" style="stop-color:#52c41a;stop-opacity:1" />
+                                </linearGradient>
+                            </defs>
+                            
+                            <!-- Círculo de fondo -->
+                            <circle cx="160" cy="160" r="130" fill="none" stroke="url(#gaugeGradient)" stroke-width="28" opacity="0.3"/>
+                            
+                            <!-- Marcadores de objetivos con líneas más visibles -->
+                            <!-- 50% -->
+                            <line x1="160" y1="30" x2="160" y2="55" stroke="#ff4d4f" stroke-width="4" opacity="0.8"/>
+                            <text x="160" y="20" text-anchor="middle" fill="#ff4d4f" font-size="13" font-weight="700">50%</text>
+                            
+                            <!-- 65% -->
+                            <line x1="252" y1="66" x2="235" y2="83" stroke="#faad14" stroke-width="4" opacity="0.9"/>
+                            <text x="270" y="65" text-anchor="middle" fill="#faad14" font-size="13" font-weight="700">65%</text>
+                            
+                            <!-- 70% -->
+                            <line x1="278" y1="118" x2="258" y2="128" stroke="#52c41a" stroke-width="4" opacity="0.9"/>
+                            <text x="298" y="122" text-anchor="middle" fill="#52c41a" font-size="13" font-weight="700">70%</text>
+                            
+                            <!-- Círculo de progreso animado -->
+                            <circle id="coberturaCircle" cx="160" cy="160" r="130" fill="none" 
+                                    stroke-width="28" 
+                                    stroke-dasharray="817" 
+                                    stroke-dashoffset="817"
+                                    stroke-linecap="round"
+                                    transform="rotate(-90 160 160)"
+                                    style="transition: stroke-dashoffset 1.5s cubic-bezier(0.4, 0, 0.2, 1), stroke 0.3s ease;"/>
+                            
+                            <!-- Círculo central decorativo -->
+                            <circle cx="160" cy="160" r="100" fill="white" opacity="0.95" style="filter: drop-shadow(0 2px 4px rgba(0,0,0,0.1));"/>
+                        </svg>
+                        
+                        <!-- Texto centrado sobre el SVG -->
+                        <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%); text-align: center; width: 180px;">
+                            <div id="coberturaValue" style="font-size: 48px; font-weight: 800; line-height: 1; margin-bottom: 8px; transition: color 0.3s ease;">
+                                {{ kpis.cobertura_clientes|round(1) }}%
+                            </div>
+                            <div id="coberturaLabel" style="font-size: 16px; color: #666; font-weight: 600; text-transform: uppercase; letter-spacing: 1px;">
+                                Cobertura
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <!-- Leyenda de objetivos debajo del gauge -->
+                    <div style="margin-top: 20px; padding: 12px; background: #f8f9fa; border-radius: 8px; font-size: 12px; width: 100%; max-width: 300px;">
+                        <div style="font-weight: 600; margin-bottom: 8px; color: #333; text-align: center;">Objetivos</div>
+                        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 11px;">
+                            <div><span style="color: #ff4d4f;">●</span> <50% Bajo</div>
+                            <div><span style="color: #ff7a45;">●</span> 50-65% Regular</div>
+                            <div><span style="color: #faad14;">●</span> 65-70% Meta</div>
+                            <div><span style="color: #52c41a;">●</span> 70%+ Excelente</div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Columna 2: Tabla de cobertura por canal -->
+            <div class="grafico-container" style="margin: 0;">
+                <div class="tabla-header" style="margin-bottom: 15px;">
+                    <h4 style="margin: 0; font-size: 16px;">Cobertura por Canal</h4>
+                </div>
+                <div style="overflow-y: auto; max-height: 400px;">
+                    <table class="tabla-avance" style="font-size: 13px;">
+                        <thead>
+                            <tr>
+                                <th style="width: 35%;">Canal</th>
+                                <th style="width: 22%;">Cartera</th>
+                                <th style="width: 22%;">Activos</th>
+                                <th style="width: 21%;">Cobertura</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for canal in datos_cobertura_canal %}
+                            <tr {% if canal.get('es_total') %}style="background: #f0f2f5; font-weight: 700; border-top: 2px solid #875A7B;"{% endif %}>
+                                <td><strong>{{ canal.canal }}</strong></td>
+                                <td style="text-align: center;">{{ canal.cartera }}</td>
+                                <td style="text-align: center;">{{ canal.activos }}</td>
+                                <td style="text-align: center;">
+                                    <span style="
+                                        font-weight: 700;
+                                        font-size: 14px;
+                                        color: {% if canal.cobertura >= 70 %}#52c41a{% elif canal.cobertura >= 65 %}#faad14{% elif canal.cobertura >= 50 %}#ff7a45{% else %}#ff4d4f{% endif %};
+                                    ">
+                                        {{ "{:.1f}".format(canal.cobertura) }}%
+                                    </span>
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                
+                <!-- Leyenda de objetivos debajo de la tabla -->
+                <div style="margin-top: 15px; padding: 12px; background: #f8f9fa; border-radius: 8px; font-size: 12px;">
+                    <div style="font-weight: 600; margin-bottom: 8px; color: #333; text-align: center;">Objetivos</div>
+                    <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 11px;">
+                        <div><span style="color: #ff4d4f;">●</span> <50% Bajo</div>
+                        <div><span style="color: #ff7a45;">●</span> 50-65% Regular</div>
+                        <div><span style="color: #faad14;">●</span> 65-70% Meta</div>
+                        <div><span style="color: #52c41a;">●</span> 70%+ Excelente</div>
+                    </div>
+                </div>
+            </div>
+        </div>
+        
+        <div style="text-align: center; margin-top: 20px; padding: 15px; background: #f0f2f5; border-radius: 8px; color: #666; font-size: 14px;">
+            <strong style="color: #875A7B;">{{ kpis.clientes_activos }}</strong> clientes activos de 
+            <strong style="color: #875A7B;">{{ kpis.total_clientes_cartera }}</strong> en cartera del año {{ fecha_actual.year }}
+        </div>
+    </div>
+    
+    <!-- Gráfico de Frecuencia de Compra -->
+    <div class="grafico-container" style="margin-top: 30px;">
+        <div class="tabla-header">
+            <h3>🔄 Frecuencia de Compra</h3>
+        </div>
+        
+        <!-- Grid de 2 columnas -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 25px; margin-top: 20px;">
+            <!-- Columna 1: Gráfico de barras -->
+            <div class="grafico-container" style="margin: 0;">
+                <div class="tabla-header" style="margin-bottom: 15px;">
+                    <h4 style="margin: 0; font-size: 16px;">Frecuencia por Línea Comercial</h4>
+                </div>
+                {% if datos_frecuencia_linea and datos_frecuencia_linea|length > 1 %}
+                <canvas id="graficoFrecuenciaLinea" style="width: 100%; height: 400px;"></canvas>
+                {% else %}
+                <div style="width: 100%; height: 400px; display: flex; align-items: center; justify-content: center; color: #999; background: #f8f9fa; border-radius: 8px;">
+                    No hay datos suficientes para mostrar el gráfico.
+                </div>
+                {% endif %}
+                
+                <!-- Explicación del KPI -->
+                <div style="margin-top: 15px; padding: 12px; background: #e6f7ff; border-left: 4px solid #1890ff; border-radius: 4px; font-size: 12px;">
+                    <div style="font-weight: 600; margin-bottom: 6px; color: #0050b3;">¿Qué mide?</div>
+                    <div style="color: #333; line-height: 1.5;">
+                        La frecuencia refleja qué tan seguido cada cliente vuelve a requerir nuestros productos. 
+                        Si está en 1, significa que compran solo 1 vez al mes; si sube a 2 o más, este cliente vuelve y depende de nosotros.
+                    </div>
+                </div>
+            </div>
+            
+            <!-- Columna 2: Tabla de frecuencia por línea -->
+            <div class="grafico-container" style="margin: 0;">
+                <div class="tabla-header" style="margin-bottom: 15px;">
+                    <h4 style="margin: 0; font-size: 16px;">Detalle por Línea</h4>
+                </div>
+                <div style="overflow-y: auto; max-height: 400px;">
+                    <table class="tabla-avance" style="font-size: 13px;">
+                        <thead>
+                            <tr>
+                                <th style="width: 35%;">Línea Comercial</th>
+                                <th style="width: 20%;">N° Clientes</th>
+                                <th style="width: 20%;">Q Pedidos</th>
+                                <th style="width: 25%;">Frecuencia</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for linea in datos_frecuencia_linea|default([]) %}
+                            <tr {% if linea.get('es_total') %}style="background: #f0f2f5; font-weight: 700; border-top: 2px solid #875A7B;"{% endif %}>
+                                <td><strong>{{ linea.linea }}</strong></td>
+                                <td style="text-align: center;">{{ linea.clientes_activos }}</td>
+                                <td style="text-align: center;">{{ linea.pedidos }}</td>
+                                <td style="text-align: center;">
+                                    <span style="
+                                        font-weight: 700;
+                                        font-size: 14px;
+                                        color: {% if linea.frecuencia >= 2 %}#52c41a{% elif linea.frecuencia >= 1 %}#faad14{% else %}#ff4d4f{% endif %};
+                                    ">
+                                        {{ "{:.2f}".format(linea.frecuencia) }}
+                                    </span>
+                                </td>
+                            </tr>
+                            {% else %}
+                            <tr>
+                                <td colspan="4" style="text-align: center; color: #999; padding: 20px;">
+                                    No hay datos disponibles para este mes
+                                </td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                
+                <!-- Objetivo vs Bench -->
+                <div style="margin-top: 15px; padding: 12px; background: #f8f9fa; border-radius: 8px; font-size: 12px;">
+                    <div style="font-weight: 600; margin-bottom: 8px; color: #333; text-align: center;">Objetivo vs Bench</div>
+                    <div style="display: grid; grid-template-columns: 1fr; gap: 6px; font-size: 11px;">
+                        <div><span style="color: #ff4d4f;">●</span> <1 pedido/mes → riesgo (cliente ocasional)</div>
+                        <div><span style="color: #faad14;">●</span> 1-2 pedidos/mes → estándar industria</div>
+                        <div><span style="color: #52c41a;">●</span> 2-3 pedidos/mes → muy bueno (recurrencia saludable)</div>
+                    </div>
+                </div>
+                
+                <!-- Asegura -->
+                <div style="margin-top: 15px; padding: 12px; background: #fff7e6; border-left: 4px solid #faad14; border-radius: 4px; font-size: 12px;">
+                    <div style="font-weight: 600; margin-bottom: 6px; color: #d48806;">Asegura:</div>
+                    <ul style="margin: 0; padding-left: 20px; color: #333; line-height: 1.6;">
+                        <li>Anticipar ingresos: clientes con frecuencia alta generan ventas más predecibles</li>
+                        <li>Medir fidelidad real: más pedidos, más confianza en nuestra marca</li>
+                        <li>Identificar oportunidades: clientes de baja frecuencia son los que aún pueden crecer</li>
+                    </ul>
+                </div>
             </div>
         </div>
     </div>
     
-    <!-- Fila inferior con gráficos -->
-    <div class="graficos-inferiores">
-        <div class="grafico-productos">
-            <h3>Top 7 Productos Más Vendidos</h3>
-            <div class="chart-container">
-                <canvas id="grafico-productos"></canvas>
-            </div>
-        </div>
-        
-        <!-- Gráfico de Líneas Comerciales (Barras Verticales) -->
-        <div class="grafico-lineas">
-            <h3>Venta por Línea Comercial</h3>
-            <div class="chart-container">
-                <canvas id="grafico-lineas"></canvas>
-            </div>
-        </div>
-    </div>
-
     <!-- 
-    GRÁFICOS DESACTIVADOS
+    GRÁFICOS DESACTIVADOS TEMPORALMENTE
+    - Venta por tipo de Producto (Donut)
+    - Top 7 Productos Más Vendidos
+    - Venta por Línea Comercial (Barras)
     - Ventas por Clasificación Comercial
     - Análisis Jerárquico de Ventas
     - Venta por Clasificación Farmacológica
     
-    Para reactivarlos, descomenta los bloques 'grafico-extra-container' 
-    y el código JavaScript correspondiente más abajo.
+    Para reactivarlos, descomenta los bloques correspondientes.
     -->
 </div>
 
@@ -546,10 +765,10 @@ body {
     /* No necesita grid, el contenedor de la tabla ocupará el 100% */
 }
 
-/* FILA 2: Tabla Ecommerce y Gráfico Donut */
+/* FILA 2: Dos tablas lado a lado 50-50 */
 .secondary-content-row {
     display: grid;
-    grid-template-columns: 2fr 1fr; /* Tabla más ancha (izquierda), gráfico más pequeño (derecha) */
+    grid-template-columns: 1fr 1fr; /* Dos columnas iguales (50% cada una) */
     gap: 25px;
     align-items: start;
 }
@@ -706,12 +925,48 @@ body {
 .grafico-extra-container {
     margin-top: 25px;
 }
+.grafico-container {
+    background: white;
+    border-radius: 12px;
+    padding: 25px;
+    box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+}
 .grafico-echarts {
     background: white;
     border-radius: 12px;
     padding: 20px;
     box-shadow: 0 2px 10px rgba(0,0,0,0.1);
 }
+
+/* Estilos para el gauge de cobertura */
+.cobertura-gauge {
+    position: relative;
+}
+
+.gauge-circle {
+    position: relative;
+}
+
+.gauge-text {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    text-align: center;
+}
+
+.gauge-value {
+    font-size: 48px;
+    font-weight: 700;
+    margin-bottom: 5px;
+}
+
+.gauge-label {
+    font-size: 18px;
+    color: #666;
+    font-weight: 500;
+}
+
 /* Responsive */
 @media (max-width: 1200px) {
     .kpi-row {
@@ -1190,9 +1445,176 @@ function updateStackedChart() {
 }
 */
 
-// Función para cambiar mes
-function cambiarMes(mesSeleccionado) {
-    window.location.href = `?mes=${mesSeleccionado}`;
+// Función para crear el gráfico de cobertura de clientes (SVG mejorado)
+function crearGraficoCobertura() {
+    const coberturaValue = {{ kpis.cobertura_clientes|default(0)|round(2) }};
+    
+    console.log('✨ Creando gauge de cobertura SVG:', coberturaValue);
+    
+    // Determinar color según el PRD
+    let color = '#ff4d4f'; // Rojo para < 50%
+    let label = 'BAJO';
+    if (coberturaValue >= 70) {
+        color = '#52c41a'; // Verde para excelencia
+        label = 'EXCELENTE';
+    } else if (coberturaValue >= 65) {
+        color = '#faad14'; // Amarillo para meta alcanzada
+        label = 'META ALCANZADA';
+    } else if (coberturaValue >= 50) {
+        color = '#ff7a45'; // Naranja para valores medios
+        label = 'REGULAR';
+    }
+    
+    // Calcular el stroke-dashoffset (817 es la circunferencia: 2 * π * 130)
+    const radius = 130;
+    const circumference = 2 * Math.PI * radius;
+    const offset = circumference - (circumference * coberturaValue / 100);
+    
+    // Aplicar estilos al círculo de progreso
+    const circle = document.getElementById('coberturaCircle');
+    const valueEl = document.getElementById('coberturaValue');
+    const labelEl = document.getElementById('coberturaLabel');
+    
+    if (circle) {
+        // Usar el gradiente si el valor es alto, sino color sólido
+        if (coberturaValue >= 50) {
+            circle.style.stroke = 'url(#progressGradient)';
+        } else {
+            circle.style.stroke = color;
+        }
+        circle.style.strokeDashoffset = offset;
+    }
+    
+    if (valueEl) {
+        valueEl.style.color = color;
+    }
+    
+    if (labelEl) {
+        labelEl.textContent = label;
+        labelEl.style.color = color;
+    }
+    
+    console.log('✅ Gauge SVG configurado:', { 
+        valor: coberturaValue, 
+        color, 
+        label, 
+        offset: offset.toFixed(2),
+        circumference: circumference.toFixed(2)
+    });
+}
+
+// Función para crear el gráfico de frecuencia de compra por línea comercial
+function crearGraficoFrecuenciaLinea() {
+    console.log('🔄 Iniciando creación de gráfico de frecuencia...');
+    
+    const ctx = document.getElementById('graficoFrecuenciaLinea');
+    if (!ctx) {
+        console.error('❌ Canvas graficoFrecuenciaLinea no encontrado');
+        return;
+    }
+
+    const datosFrecuencia = {{ datos_frecuencia_linea|default([])|tojson|safe }};
+    console.log('📊 Datos frecuencia recibidos:', datosFrecuencia);
+    
+    if (!datosFrecuencia || datosFrecuencia.length === 0) {
+        console.error('❌ No hay datos de frecuencia disponibles');
+        return;
+    }
+    
+    // Filtrar el total para el gráfico
+    const datosLineas = datosFrecuencia.filter(d => !d.es_total);
+    console.log('📊 Líneas a graficar:', datosLineas.length);
+    
+    if (datosLineas.length === 0) {
+        console.error('❌ No hay líneas para graficar después de filtrar');
+        return;
+    }
+    
+    // Extraer datos
+    const labels = datosLineas.map(d => d.linea);
+    const frecuencias = datosLineas.map(d => d.frecuencia);
+    const clientes = datosLineas.map(d => d.clientes_activos);
+    const pedidos = datosLineas.map(d => d.pedidos);
+    
+    console.log('📊 Labels:', labels);
+    console.log('📊 Frecuencias:', frecuencias);
+    
+    // Colores según frecuencia
+    const coloresBarra = frecuencias.map(f => {
+        if (f >= 2) return '#52c41a'; // Verde: muy bueno
+        if (f >= 1) return '#faad14'; // Amarillo: estándar
+        return '#ff4d4f'; // Rojo: riesgo
+    });
+    
+    try {
+        new Chart(ctx, {
+            type: 'bar',
+            data: {
+                labels: labels,
+                datasets: [{
+                    label: 'Frecuencia',
+                    data: frecuencias,
+                    backgroundColor: coloresBarra,
+                    borderColor: coloresBarra,
+                    borderWidth: 1,
+                    borderRadius: 6
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: false
+                    },
+                    tooltip: {
+                        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                        titleFont: { size: 14, weight: 'bold' },
+                        bodyFont: { size: 13 },
+                        padding: 12,
+                        callbacks: {
+                            label: function(context) {
+                                const index = context.dataIndex;
+                                return [
+                                    `Frecuencia: ${frecuencias[index].toFixed(2)} pedidos/cliente`,
+                                    `Clientes: ${clientes[index]}`,
+                                    `Pedidos: ${pedidos[index]}`
+                                ];
+                            }
+                        }
+                    }
+                },
+                scales: {
+                    y: {
+                        beginAtZero: true,
+                        ticks: {
+                            font: { size: 11 },
+                            callback: function(value) {
+                                return value.toFixed(1);
+                            }
+                        },
+                        grid: {
+                            color: '#e8e8e8'
+                        }
+                    },
+                    x: {
+                        ticks: {
+                            font: { size: 11 },
+                            maxRotation: 45,
+                            minRotation: 45
+                        },
+                        grid: {
+                            display: false
+                        }
+                    }
+                }
+            }
+        });
+        
+        console.log('✅ Gráfico de frecuencia de compra creado exitosamente');
+    } catch (error) {
+        console.error('❌ Error al crear gráfico de frecuencia:', error);
+    }
 }
 
 // Inicializar gráficos cuando la página carga
@@ -1200,6 +1622,8 @@ document.addEventListener('DOMContentLoaded', function() {
     crearGraficoCicloVida(); // ECharts
     crearGraficoProductos(); // Chart.js - Carga inicial
     crearGraficoLineas();
+    crearGraficoCobertura(); // Gauge SVG de cobertura
+    crearGraficoFrecuenciaLinea(); // Gráfico de frecuencia de compra
 
     // GRÁFICOS DESACTIVADOS
     // crearGraficoFormaFarmaceutica();

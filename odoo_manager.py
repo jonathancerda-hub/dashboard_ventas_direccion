@@ -243,6 +243,88 @@ class OdooManager:
             print(f"Error obteniendo la lista de vendedores: {e}")
             return []
 
+    def get_customers(self, limit=None, search=None, customer_ids=None):
+        """
+        Obtiene información de clientes desde res.partner
+        
+        Args:
+            limit: Número máximo de registros a retornar
+            search: Texto para buscar en nombre o código
+            customer_ids: Lista de IDs específicos de clientes a obtener
+            
+        Returns:
+            Lista de diccionarios con información de clientes
+        """
+        try:
+            if not self.uid or not self.models:
+                print("⚠️ No hay conexión a Odoo")
+                return []
+            
+            # Construir dominio de búsqueda
+            domain = [('customer_rank', '>', 0)]  # Solo clientes
+            
+            if customer_ids:
+                domain.append(('id', 'in', customer_ids))
+            
+            if search:
+                domain.append('|', ('name', 'ilike', search), ('ref', 'ilike', search))
+            
+            # Campos a obtener
+            fields = [
+                'id',
+                'name',                    # Nombre del cliente
+                'ref',                     # Código/referencia
+                'vat',                     # RUC/NIT
+                'email',
+                'phone',
+                'mobile',
+                'street',                  # Dirección
+                'city',
+                'state_id',               # Departamento/Estado
+                'country_id',             # País
+                'customer_rank',          # Ranking de cliente
+                'user_id',                # Vendedor asignado
+                'property_payment_term_id',  # Términos de pago
+                'commercial_partner_id',  # Empresa matriz
+                'company_type',           # 'company' o 'person'
+            ]
+            
+            # Realizar búsqueda
+            customers = self.models.execute_kw(
+                self.db, self.uid, self.password,
+                'res.partner', 'search_read',
+                [domain],
+                {'fields': fields, 'limit': limit if limit else 1000}
+            )
+            
+            print(f"✅ Clientes obtenidos: {len(customers)} registros")
+            return customers
+            
+        except Exception as e:
+            print(f"❌ Error obteniendo clientes de Odoo: {e}")
+            return []
+
+    def get_customer_by_id(self, customer_id):
+        """
+        Obtiene información detallada de un cliente específico
+        
+        Args:
+            customer_id: ID del cliente en Odoo
+            
+        Returns:
+            Diccionario con información del cliente o None
+        """
+        try:
+            if not self.uid or not self.models:
+                return None
+            
+            customers = self.get_customers(customer_ids=[customer_id])
+            return customers[0] if customers else None
+            
+        except Exception as e:
+            print(f"❌ Error obteniendo cliente {customer_id}: {e}")
+            return None
+
     def get_sales_lines(self, page=None, per_page=None, filters=None, date_from=None, date_to=None, partner_id=None, linea_id=None, search=None, limit=5000):
         """Obtener líneas de venta completas con todas las 27 columnas"""
         try:
@@ -369,11 +451,6 @@ class OdooManager:
                     }
                 )
                 product_data = {p['id']: p for p in products}
-                # --- DEBUG: Imprimir los campos del primer producto para verificar el nombre del campo ---
-                if products:
-                    print("🔍 DEBUG: Campos del primer producto obtenido:")
-                    print(products[0])
-                # --- FIN DEBUG ---
                 print(f"✅ Productos: {len(product_data)} registros")
             
             # Obtener datos de clientes
