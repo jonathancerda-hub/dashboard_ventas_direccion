@@ -365,7 +365,7 @@ function cambiarMes(mesSeleccionado) {
                     <h4 style="margin: 0; font-size: 16px;">Frecuencia por Línea Comercial</h4>
                 </div>
                 {% if datos_frecuencia_linea and datos_frecuencia_linea|length > 1 %}
-                <canvas id="graficoFrecuenciaLinea" style="width: 100%; height: 400px;"></canvas>
+                <div id="graficoFrecuenciaLinea" style="width: 100%; height: 400px;"></div>
                 {% else %}
                 <div style="width: 100%; height: 400px; display: flex; align-items: center; justify-content: center; color: #999; background: #f8f9fa; border-radius: 8px;">
                     No hay datos suficientes para mostrar el gráfico.
@@ -442,6 +442,243 @@ function cambiarMes(mesSeleccionado) {
                         <li>Medir fidelidad real: más pedidos, más confianza en nuestra marca</li>
                         <li>Identificar oportunidades: clientes de baja frecuencia son los que aún pueden crecer</li>
                     </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Tendencia Histórica de Ventas (12 meses) -->
+    <div class="grafico-container" style="margin-top: 30px; overflow: hidden;">
+        <div class="tabla-header">
+            <h3>📈 Tendencia Histórica de Ventas (12 Meses)</h3>
+        </div>
+        
+        <div style="margin-top: 20px; position: relative; height: 450px; overflow: hidden;">
+            {% if tendencia_12_meses and tendencia_12_meses|length > 0 %}
+            <div style="position: relative; height: 400px; width: 100%;">
+                <canvas id="graficoTendencia12Meses"></canvas>
+            </div>
+            {% else %}
+            <div style="width: 100%; height: 400px; display: flex; align-items: center; justify-content: center; color: #999; background: #f8f9fa; border-radius: 8px;">
+                No hay datos históricos suficientes para mostrar la tendencia.
+            </div>
+            {% endif %}
+            
+            <!-- Explicación del gráfico -->
+            <div style="margin-top: 20px; padding: 15px; background: #e6f7ff; border-left: 4px solid #1890ff; border-radius: 4px; font-size: 13px;">
+                <div style="font-weight: 600; margin-bottom: 8px; color: #0050b3;">¿Qué muestra?</div>
+                <div style="color: #333; line-height: 1.6;">
+                    <strong>Evolución mensual</strong> de ventas vs metas para identificar patrones, estacionalidad y cumplimiento sostenido.
+                    Las áreas sombreadas indican períodos de sobre-cumplimiento (verde) o bajo-cumplimiento (rojo) de metas.
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Análisis RFM (Segmentación de Clientes) -->
+    <div class="grafico-container" style="margin-top: 30px; overflow: hidden;">
+        <div class="tabla-header">
+            <h3>🎯 Análisis RFM - Segmentación de Clientes</h3>
+        </div>
+        
+        <!-- Grid de 2 columnas -->
+        <div style="display: grid; grid-template-columns: 1fr 1.5fr; gap: 25px; margin-top: 20px; overflow: hidden;">
+            <!-- Columna 1: Distribución de segmentos -->
+            <div class="grafico-container" style="margin: 0; overflow: hidden;">
+                <div class="tabla-header" style="margin-bottom: 15px;">
+                    <h4 style="margin: 0; font-size: 16px;">Distribución por Segmento</h4>
+                </div>
+                {% if segmentos_rfm %}
+                <div style="position: relative; height: 300px; width: 100%;">
+                    <canvas id="graficoSegmentosRFM"></canvas>
+                </div>
+                
+                <!-- Leyenda de segmentos -->
+                <div style="margin-top: 20px; padding: 15px; background: #f8f9fa; border-radius: 8px; font-size: 12px;">
+                    <div style="font-weight: 600; margin-bottom: 10px; color: #333;">Definición de Segmentos:</div>
+                    <div style="line-height: 1.8;">
+                        <div><span style="color: #52c41a;">●</span> <strong>Campeones:</strong> Compran frecuente y recientemente, alto valor</div>
+                        <div><span style="color: #73d13d;">●</span> <strong>Leales:</strong> Compran regularmente, buen valor</div>
+                        <div><span style="color: #95de64;">●</span> <strong>Potenciales:</strong> Compras recientes, pueden crecer</div>
+                        <div><span style="color: #1890ff;">●</span> <strong>Nuevos:</strong> Compraron recientemente por primera vez</div>
+                        <div><span style="color: #faad14;">●</span> <strong>En Riesgo:</strong> Buenos clientes que no compran hace tiempo</div>
+                        <div><span style="color: #ff7a45;">●</span> <strong>Hibernando:</strong> Bajo valor, no compran hace tiempo</div>
+                        <div><span style="color: #ff4d4f;">●</span> <strong>Perdidos:</strong> Mucho tiempo sin comprar</div>
+                    </div>
+                </div>
+                {% endif %}
+            </div>
+            
+            <!-- Columna 2: Top clientes -->
+            <div class="grafico-container" style="margin: 0; overflow: hidden;">
+                <div class="tabla-header" style="margin-bottom: 15px;">
+                    <h4 style="margin: 0; font-size: 16px;">Top 20 Clientes por Valor</h4>
+                </div>
+                <div style="overflow-y: auto; overflow-x: hidden; max-height: 500px;">
+                    <table class="tabla-avance" style="font-size: 12px; table-layout: fixed; width: 100%;">
+                        <thead>
+                            <tr>
+                                <th style="width: 5%;">#</th>
+                                <th style="width: 35%;">Cliente</th>
+                                <th style="width: 15%;">Segmento</th>
+                                <th style="width: 12%;">Recency</th>
+                                <th style="width: 12%;">Frequency</th>
+                                <th style="width: 21%;">Valor</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            {% for cliente in clientes_rfm[:20] %}
+                            <tr>
+                                <td style="text-align: center;">{{ loop.index }}</td>
+                                <td style="font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{{ cliente.cliente }}">{{ cliente.cliente }}</td>
+                                <td style="text-align: center;">
+                                    <span style="
+                                        padding: 4px 8px;
+                                        border-radius: 12px;
+                                        font-size: 11px;
+                                        font-weight: 600;
+                                        background: {{ cliente.color }}22;
+                                        color: {{ cliente.color }};
+                                    ">
+                                        {{ cliente.categoria }}
+                                    </span>
+                                </td>
+                                <td style="text-align: center;">{{ cliente.recency }} días</td>
+                                <td style="text-align: center;">{{ cliente.frequency }}</td>
+                                <td style="text-align: right; font-weight: 600;">S/ {{ "{:,.0f}".format(cliente.monetary) }}</td>
+                            </tr>
+                            {% endfor %}
+                        </tbody>
+                    </table>
+                </div>
+                
+                <!-- Insight -->
+                <div style="margin-top: 15px; padding: 12px; background: #fff7e6; border-left: 4px solid #faad14; border-radius: 4px; font-size: 12px;">
+                    <div style="font-weight: 600; margin-bottom: 6px; color: #d48806;">💡 Acción Recomendada:</div>
+                    <ul style="margin: 0; padding-left: 20px; color: #333; line-height: 1.6;">
+                        <li><strong>Campeones:</strong> Programa de fidelización VIP</li>
+                        <li><strong>En Riesgo:</strong> Campaña de reactivación urgente</li>
+                        <li><strong>Potenciales:</strong> Cross-selling y up-selling</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- Clientes en Riesgo -->
+    <div class="grafico-container" style="margin-top: 30px; overflow: hidden;">
+        <div class="tabla-header">
+            <h3>⚠️ Clientes de Alto Valor en Riesgo</h3>
+        </div>
+        
+        <div style="margin-top: 20px; overflow: hidden;">
+            {% if clientes_riesgo and clientes_riesgo|length > 0 %}
+            <div style="overflow-x: auto; overflow-y: hidden; max-height: 600px; -webkit-overflow-scrolling: touch;">
+                <table class="tabla-avance" style="font-size: 12px; table-layout: fixed; width: 100%; min-width: 800px;">
+                    <thead>
+                        <tr>
+                            <th style="width: 5%;">#</th>
+                            <th style="width: 30%;">Cliente</th>
+                            <th style="width: 15%;">Nivel Riesgo</th>
+                            <th style="width: 15%;">Días sin Compra</th>
+                            <th style="width: 10%;">Frecuencia</th>
+                            <th style="width: 15%;">Valor Histórico</th>
+                            <th style="width: 10%;">Segmento</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for cliente in clientes_riesgo %}
+                        <tr>
+                            <td style="text-align: center;">{{ loop.index }}</td>
+                            <td style="font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="{{ cliente.cliente }}">{{ cliente.cliente }}</td>
+                            <td style="text-align: center;">
+                                <span style="
+                                    padding: 4px 10px;
+                                    border-radius: 12px;
+                                    font-size: 11px;
+                                    font-weight: 700;
+                                    background: {{ cliente.color }}22;
+                                    color: {{ cliente.color }};
+                                ">
+                                    {{ cliente.nivel_riesgo }}
+                                </span>
+                            </td>
+                            <td style="text-align: center; font-weight: 600; color: {{ cliente.color }};">
+                                {{ cliente.dias_sin_compra }} días
+                            </td>
+                            <td style="text-align: center;">{{ cliente.frecuencia }} pedidos</td>
+                            <td style="text-align: right; font-weight: 600;">S/ {{ "{:,.0f}".format(cliente.valor_historico) }}</td>
+                            <td style="text-align: center; font-size: 11px;">{{ cliente.categoria_rfm }}</td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+            
+            <!-- Estrategia de acción -->
+            <div style="margin-top: 20px; padding: 15px; background: #fff1f0; border-left: 4px solid #ff4d4f; border-radius: 4px; font-size: 13px;">
+                <div style="font-weight: 600; margin-bottom: 8px; color: #cf1322;">🚨 Estrategia de Retención Urgente:</div>
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 15px; margin-top: 10px;">
+                    <div>
+                        <div style="font-weight: 600; color: #ff4d4f; margin-bottom: 5px;">Nivel Alto (90+ días):</div>
+                        <ul style="margin: 0; padding-left: 20px; color: #333; line-height: 1.6;">
+                            <li>Contacto directo del Key Account Manager</li>
+                            <li>Descuento especial de reactivación (10-15%)</li>
+                            <li>Entrevista para identificar causas de abandono</li>
+                        </ul>
+                    </div>
+                    <div>
+                        <div style="font-weight: 600; color: #faad14; margin-bottom: 5px;">Nivel Medio (60-90 días):</div>
+                        <ul style="margin: 0; padding-left: 20px; color: #333; line-height: 1.6;">
+                            <li>Email personalizado con recomendaciones</li>
+                            <li>Cupón de descuento en próxima compra</li>
+                            <li>Llamada de seguimiento comercial</li>
+                        </ul>
+                    </div>
+                </div>
+            </div>
+            {% else %}
+            <div style="padding: 40px; text-align: center; background: #f8f9fa; border-radius: 8px; color: #52c41a;">
+                <div style="font-size: 48px; margin-bottom: 10px;">✅</div>
+                <div style="font-size: 18px; font-weight: 600;">¡Excelente! No hay clientes de alto valor en riesgo</div>
+                <div style="font-size: 14px; color: #666; margin-top: 5px;">Todos los clientes importantes están activos</div>
+            </div>
+            {% endif %}
+        </div>
+    </div>
+    
+    <!-- 🔥 HEATMAP DE ACTIVIDAD DE VENTAS -->
+    <div class="grafico-container" style="margin-top: 30px; overflow: hidden;">
+        <h3 style="margin-bottom: 20px;">
+            <span style="font-size: 22px;">🔥</span>
+            Heatmap de Actividad de Ventas
+        </h3>
+        
+        <div style="background: #fff9e6; padding: 12px 15px; border-left: 4px solid #faad14; border-radius: 4px; margin-bottom: 20px; font-size: 13px;">
+            <div style="font-weight: 600; margin-bottom: 6px; color: #d48806;">📊 ¿Qué muestra?</div>
+            <div style="color: #666; line-height: 1.6;">
+                Mapa de calor que identifica <strong>días y semanas con mayor actividad de ventas</strong>. 
+                Los colores más intensos indican mayor volumen de ventas. 
+                <strong>Acción:</strong> Planificar promociones en períodos de baja actividad para equilibrar flujo de trabajo.
+            </div>
+        </div>
+        
+        <div style="position: relative; height: 350px; width: 100%;">
+            <div id="graficoHeatmapVentas" style="width: 100%; height: 100%;"></div>
+        </div>
+        
+        <!-- Insights automáticos -->
+        <div style="margin-top: 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 15px;">
+            <div style="padding: 15px; background: linear-gradient(135deg, #e6f7ff 0%, #bae7ff 100%); border-radius: 8px;">
+                <div style="font-size: 11px; color: #0050b3; font-weight: 600; margin-bottom: 5px;">💡 OPTIMIZACIÓN DE RECURSOS</div>
+                <div style="font-size: 13px; color: #333; line-height: 1.5;">
+                    Asignar más personal comercial en días/semanas de alta demanda identificados en el mapa
+                </div>
+            </div>
+            <div style="padding: 15px; background: linear-gradient(135deg, #fff0f6 0%, #ffd6e7 100%); border-radius: 8px;">
+                <div style="font-size: 11px; color: #c41d7f; font-weight: 600; margin-bottom: 5px;">🎯 ESTRATEGIA COMERCIAL</div>
+                <div style="font-size: 13px; color: #333; line-height: 1.5;">
+                    Lanzar campañas promocionales en días de baja actividad para incrementar ventas
                 </div>
             </div>
         </div>
@@ -1004,6 +1241,12 @@ const datosCicloVida = {{ datos_ciclo_vida|tojson|safe }};
 // Gráfico de Ciclo de Vida (Donut)
 function crearGraficoCicloVida() {
     const chartDom = document.getElementById('grafico-donut');
+    // --- FIX: Añadir comprobación para evitar error si el elemento no existe ---
+    if (!chartDom) {
+        console.warn("⚠️ Elemento 'grafico-donut' no encontrado. Saltando creación de gráfico de ciclo de vida.");
+        return;
+    }
+    // --------------------------------------------------------------------
     const myChart = echarts.init(chartDom);
 
     const seriesData = datosCicloVida.map(item => ({
@@ -1118,6 +1361,12 @@ function crearGraficoProductos(productosData) {
 // Gráfico de Líneas Comerciales (Barras Verticales)
 function crearGraficoLineas() {
     const ctx = document.getElementById('grafico-lineas').getContext('2d');
+    // --- FIX: Añadir comprobación para evitar error si el canvas no existe ---
+    if (!ctx) {
+        console.warn("⚠️ Elemento 'grafico-lineas' no encontrado. Saltando creación de gráfico.");
+        return;
+    }
+    // --------------------------------------------------------------------
     // Usar una copia ordenada por 'meta' descendente para mostrar las barras de mayor a menor por meta
     const datosLineasSorted = Array.isArray(datosLineas) ? [...datosLineas].sort((a, b) => (b.meta || 0) - (a.meta || 0)) : [];
 
@@ -1503,69 +1752,214 @@ function crearGraficoCobertura() {
     });
 }
 
-// Función para crear el gráfico de frecuencia de compra por línea comercial
+// Función para crear el gráfico de frecuencia de compra por línea comercial (con ECharts)
 function crearGraficoFrecuenciaLinea() {
-    console.log('🔄 Iniciando creación de gráfico de frecuencia...');
+    console.log('🔄 Iniciando creación de gráfico de frecuencia con ECharts...');
     
-    const ctx = document.getElementById('graficoFrecuenciaLinea');
-    if (!ctx) {
-        console.error('❌ Canvas graficoFrecuenciaLinea no encontrado');
+    const chartDom = document.getElementById('graficoFrecuenciaLinea');
+    if (!chartDom) {
+        console.error('❌ Elemento para el gráfico de frecuencia (graficoFrecuenciaLinea) no encontrado.');
+        return; // No hacer nada si el elemento no existe
+    }
+    
+    // Inicializar instancia de ECharts
+    const myChart = echarts.init(chartDom);
+    
+    const datosFrecuencia = {{ datos_frecuencia_linea|default([])|tojson|safe }};
+    console.log('📊 Datos de frecuencia recibidos para ECharts:', datosFrecuencia);
+
+    if (!datosFrecuencia || datosFrecuencia.length <= 1) { // <= 1 para ignorar si solo está el total
+        console.error('❌ No hay datos de frecuencia para ECharts.');
         return;
     }
 
-    const datosFrecuencia = {{ datos_frecuencia_linea|default([])|tojson|safe }};
-    console.log('📊 Datos frecuencia recibidos:', datosFrecuencia);
-    
-    if (!datosFrecuencia || datosFrecuencia.length === 0) {
-        console.error('❌ No hay datos de frecuencia disponibles');
-        return;
-    }
-    
-    // Filtrar el total para el gráfico
-    const datosLineas = datosFrecuencia.filter(d => !d.es_total);
-    console.log('📊 Líneas a graficar:', datosLineas.length);
-    
+    const datosLineas = datosFrecuencia.filter(d => !d.es_total).sort((a, b) => b.frecuencia - a.frecuencia);
     if (datosLineas.length === 0) {
-        console.error('❌ No hay líneas para graficar después de filtrar');
+        console.error('❌ No hay líneas para graficar después de filtrar el total.');
         return;
     }
     
-    // Extraer datos
     const labels = datosLineas.map(d => d.linea);
     const frecuencias = datosLineas.map(d => d.frecuencia);
     const clientes = datosLineas.map(d => d.clientes_activos);
     const pedidos = datosLineas.map(d => d.pedidos);
+
+    const dataForChart = datosLineas.map(d => ({
+        value: d.frecuencia,
+        itemStyle: {
+            color: d.frecuencia >= 2 ? '#52c41a' : (d.frecuencia >= 1 ? '#faad14' : '#ff4d4f')
+        }
+    }));
+
+    const option = {
+        tooltip: {
+            trigger: 'axis',
+            axisPointer: { type: 'shadow' },
+            formatter: function (params) {
+                const index = params[0].dataIndex;
+                const linea = labels[index];
+                const frecuencia = frecuencias[index].toFixed(2);
+                const numClientes = clientes[index];
+                const numPedidos = pedidos[index];
+                
+                return `<strong>${linea}</strong><br/>
+                        Frecuencia: ${frecuencia} pedidos/cliente<br/>
+                        Clientes: ${numClientes}<br/>
+                        Pedidos: ${numPedidos}`;
+            }
+        },
+        grid: {
+            left: '3%',
+            right: '4%',
+            bottom: '3%',
+            containLabel: true
+        },
+        xAxis: {
+            type: 'category',
+            data: labels,
+            axisLabel: {
+                rotate: 45,
+                interval: 0
+            }
+        },
+        yAxis: {
+            type: 'value',
+            min: 0,
+            axisLabel: { // Formato para el eje Y
+                formatter: '{value}'
+            }
+        },
+        series: [{
+            name: 'Frecuencia',
+            type: 'bar',
+            barWidth: '60%',
+            data: dataForChart,
+            label: { // Mostrar el valor encima de cada barra
+                show: true,
+                position: 'top',
+                formatter: '{c}', // 'c' es el valor del dato
+                color: '#333'
+            }
+        }]
+    };
+
+    myChart.setOption(option);
+    console.log('✅ Gráfico de frecuencia de compra con ECharts creado exitosamente.');
+}
+
+// Función para crear el gráfico de tendencia histórica (12 meses)
+function crearGraficoTendencia12Meses() {
+    console.log('📈 Creando gráfico de tendencia histórica...');
+    
+    const ctx = document.getElementById('graficoTendencia12Meses');
+    if (!ctx) {
+        console.error('❌ Canvas graficoTendencia12Meses no encontrado');
+        return;
+    }
+
+    const datosTendencia = {{ tendencia_12_meses|default([])|tojson|safe }};
+    console.log('📊 Datos tendencia recibidos:', datosTendencia);
+    
+    if (!datosTendencia || datosTendencia.length === 0) {
+        console.error('❌ No hay datos de tendencia disponibles');
+        return;
+    }
+    
+    // Extraer datos
+    const labels = datosTendencia.map(d => d.mes_nombre);
+    const ventas = datosTendencia.map(d => d.venta);
+    const metas = datosTendencia.map(d => d.meta);
+    const cumplimiento = datosTendencia.map(d => d.cumplimiento);
+    
+    // Calcular línea de tendencia lineal (regresión lineal simple)
+    const calcularTendenciaLineal = (datos) => {
+        const n = datos.length;
+        let sumX = 0, sumY = 0, sumXY = 0, sumX2 = 0;
+        
+        datos.forEach((y, x) => {
+            sumX += x;
+            sumY += y;
+            sumXY += x * y;
+            sumX2 += x * x;
+        });
+        
+        const pendiente = (n * sumXY - sumX * sumY) / (n * sumX2 - sumX * sumX);
+        const intercepto = (sumY - pendiente * sumX) / n;
+        
+        return datos.map((_, x) => pendiente * x + intercepto);
+    };
+    
+    const tendenciaLineal = calcularTendenciaLineal(ventas);
     
     console.log('📊 Labels:', labels);
-    console.log('📊 Frecuencias:', frecuencias);
-    
-    // Colores según frecuencia
-    const coloresBarra = frecuencias.map(f => {
-        if (f >= 2) return '#52c41a'; // Verde: muy bueno
-        if (f >= 1) return '#faad14'; // Amarillo: estándar
-        return '#ff4d4f'; // Rojo: riesgo
-    });
+    console.log('📊 Ventas:', ventas);
+    console.log('📊 Metas:', metas);
+    console.log('📈 Tendencia lineal calculada:', tendenciaLineal);
     
     try {
         new Chart(ctx, {
-            type: 'bar',
+            type: 'line',
             data: {
                 labels: labels,
-                datasets: [{
-                    label: 'Frecuencia',
-                    data: frecuencias,
-                    backgroundColor: coloresBarra,
-                    borderColor: coloresBarra,
-                    borderWidth: 1,
-                    borderRadius: 6
-                }]
+                datasets: [
+                    {
+                        label: 'Venta Real',
+                        data: ventas,
+                        borderColor: '#875A7B',
+                        backgroundColor: 'rgba(135, 90, 123, 0.1)',
+                        borderWidth: 3,
+                        fill: true,
+                        tension: 0.4,
+                        pointRadius: 5,
+                        pointHoverRadius: 7,
+                        pointBackgroundColor: '#875A7B',
+                        pointBorderColor: '#fff',
+                        pointBorderWidth: 2,
+                        order: 2
+                    },
+                    {
+                        label: 'Meta',
+                        data: metas,
+                        borderColor: '#faad14',
+                        backgroundColor: 'rgba(250, 173, 20, 0.05)',
+                        borderWidth: 2,
+                        borderDash: [5, 5],
+                        fill: false,
+                        tension: 0.4,
+                        pointRadius: 4,
+                        pointHoverRadius: 6,
+                        pointBackgroundColor: '#faad14',
+                        pointBorderColor: '#fff',
+                        pointBorderWidth: 2,
+                        order: 3
+                    },
+                    {
+                        label: 'Tendencia',
+                        data: tendenciaLineal,
+                        borderColor: '#52c41a',
+                        backgroundColor: 'transparent',
+                        borderWidth: 2.5,
+                        borderDash: [10, 5],
+                        fill: false,
+                        tension: 0,
+                        pointRadius: 0,
+                        pointHoverRadius: 0,
+                        order: 1
+                    }
+                ]
             },
             options: {
                 responsive: true,
                 maintainAspectRatio: false,
                 plugins: {
                     legend: {
-                        display: false
+                        display: true,
+                        position: 'top',
+                        labels: {
+                            font: { size: 13, weight: '600' },
+                            usePointStyle: true,
+                            padding: 15
+                        }
                     },
                     tooltip: {
                         backgroundColor: 'rgba(0, 0, 0, 0.8)',
@@ -1575,11 +1969,16 @@ function crearGraficoFrecuenciaLinea() {
                         callbacks: {
                             label: function(context) {
                                 const index = context.dataIndex;
-                                return [
-                                    `Frecuencia: ${frecuencias[index].toFixed(2)} pedidos/cliente`,
-                                    `Clientes: ${clientes[index]}`,
-                                    `Pedidos: ${pedidos[index]}`
-                                ];
+                                const label = context.dataset.label;
+                                const value = context.parsed.y;
+                                
+                                if (label === 'Venta Real') {
+                                    return [
+                                        `${label}: S/ ${value.toLocaleString('es-PE')}`,
+                                        `Cumplimiento: ${cumplimiento[index].toFixed(1)}%`
+                                    ];
+                                }
+                                return `${label}: S/ ${value.toLocaleString('es-PE')}`;
                             }
                         }
                     }
@@ -1590,11 +1989,12 @@ function crearGraficoFrecuenciaLinea() {
                         ticks: {
                             font: { size: 11 },
                             callback: function(value) {
-                                return value.toFixed(1);
+                                return 'S/ ' + (value / 1000).toFixed(0) + 'K';
                             }
                         },
                         grid: {
-                            color: '#e8e8e8'
+                            color: '#e8e8e8',
+                            drawBorder: false
                         }
                     },
                     x: {
@@ -1607,26 +2007,129 @@ function crearGraficoFrecuenciaLinea() {
                             display: false
                         }
                     }
+                },
+                interaction: {
+                    mode: 'index',
+                    intersect: false
                 }
             }
         });
         
-        console.log('✅ Gráfico de frecuencia de compra creado exitosamente');
+        console.log('✅ Gráfico de tendencia histórica creado exitosamente');
     } catch (error) {
-        console.error('❌ Error al crear gráfico de frecuencia:', error);
+        console.error('❌ Error al crear gráfico de tendencia:', error);
+    }
+}
+
+// Función para crear el gráfico de segmentos RFM
+function crearGraficoSegmentosRFM() {
+    console.log('🎯 Creando gráfico de segmentos RFM...');
+    
+    const ctx = document.getElementById('graficoSegmentosRFM');
+    if (!ctx) {
+        console.error('❌ Canvas graficoSegmentosRFM no encontrado');
+        return;
+    }
+
+    const segmentosRFM = {{ segmentos_rfm|default({})|tojson|safe }};
+    console.log('📊 Datos RFM recibidos:', segmentosRFM);
+    
+    if (!segmentosRFM || Object.keys(segmentosRFM).length === 0) {
+        console.error('❌ No hay datos de segmentos RFM disponibles');
+        return;
+    }
+    
+    // Orden de segmentos para el gráfico
+    const ordenSegmentos = ['Campeones', 'Leales', 'Potenciales', 'Nuevos', 'En Riesgo', 'Hibernando', 'Perdidos', 'Otros'];
+    
+    // Extraer datos ordenados
+    const labels = [];
+    const counts = [];
+    const valores = [];
+    const colores = [];
+    
+    ordenSegmentos.forEach(segmento => {
+        if (segmentosRFM[segmento]) {
+            labels.push(segmento);
+            counts.push(segmentosRFM[segmento].count);
+            valores.push(segmentosRFM[segmento].valor);
+            colores.push(segmentosRFM[segmento].color);
+        }
+    });
+    
+    console.log('📊 Segmentos:', labels);
+    console.log('📊 Counts:', counts);
+    
+    try {
+        new Chart(ctx, {
+            type: 'doughnut',
+            data: {
+                labels: labels,
+                datasets: [{
+                    data: counts,
+                    backgroundColor: colores,
+                    borderColor: '#fff',
+                    borderWidth: 3,
+                    hoverOffset: 10
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        display: true,
+                        position: 'bottom',
+                        labels: {
+                            font: { size: 11 },
+                            usePointStyle: true,
+                            padding: 12,
+                            generateLabels: function(chart) {
+                                const data = chart.data;
+                                return data.labels.map((label, i) => ({
+                                    text: `${label} (${data.datasets[0].data[i]})`,
+                                    fillStyle: data.datasets[0].backgroundColor[i],
+                                    hidden: false,
+                                    index: i
+                                }));
+                            }
+                        }
+                    },
+                    tooltip: {
+                        backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                        titleFont: { size: 14, weight: 'bold' },
+                        bodyFont: { size: 13 },
+                        padding: 12,
+                        callbacks: {
+                            label: function(context) {
+                                const index = context.dataIndex;
+                                const label = context.label;
+                                const count = context.parsed;
+                                const valor = valores[index];
+                                const total = counts.reduce((a, b) => a + b, 0);
+                                const porcentaje = ((count / total) * 100).toFixed(1);
+                                
+                                return [
+                                    `${label}: ${count} clientes (${porcentaje}%)`,
+                                    `Valor: S/ ${valor.toLocaleString('es-PE')}`
+                                ];
+                            }
+                        }
+                    }
+                }
+            }
+        });
+        
+        console.log('✅ Gráfico de segmentos RFM creado exitosamente');
+    } catch (error) {
+        console.error('❌ Error al crear gráfico RFM:', error);
     }
 }
 
 // Inicializar gráficos cuando la página carga
 document.addEventListener('DOMContentLoaded', function() {
-    crearGraficoCicloVida(); // ECharts
-    crearGraficoProductos(); // Chart.js - Carga inicial
-    crearGraficoLineas();
-    crearGraficoCobertura(); // Gauge SVG de cobertura
-    crearGraficoFrecuenciaLinea(); // Gráfico de frecuencia de compra
-
-    // GRÁFICOS DESACTIVADOS
-    // crearGraficoFormaFarmaceutica();
+    // FIX: Se comenta la llamada ya que el elemento 'grafico-donut' está deshabilitado en el HTML.
+    // crearGraficoCicloVida(ceutica();
     // crearGraficoDrilldown();
 
     // --- Flatpickr Initialization ---
@@ -1653,6 +2156,136 @@ document.addEventListener('DOMContentLoaded', function() {
         },
     });
 
+    // Función para crear el heatmap de actividad de ventas
+    function crearGraficoHeatmapVentas() {
+        console.log('🔥 Creando heatmap de actividad de ventas...');
+        
+        const container = document.getElementById('graficoHeatmapVentas');
+        if (!container) {
+            console.error('❌ Contenedor graficoHeatmapVentas no encontrado');
+            return;
+        }
+        
+        const datosHeatmap = {{ heatmap_ventas|default([])|tojson|safe }};
+        const diasLabels = {{ heatmap_dias|default([])|tojson|safe }};
+        const semanasLabels = {{ heatmap_semanas|default([])|tojson|safe }};
+        
+        console.log('📊 Datos heatmap:', datosHeatmap);
+        
+        if (!datosHeatmap || datosHeatmap.length === 0) {
+            console.error('❌ No hay datos de heatmap disponibles');
+            return;
+        }
+        
+        // Preparar datos en formato [dia, semana, valor]
+        const data = datosHeatmap.map(item => [
+            item.dia,
+            item.semana,
+            item.valor
+        ]);
+        
+        // Encontrar valor máximo para escalar colores
+        const maxValor = Math.max(...datosHeatmap.map(d => d.valor));
+        
+        try {
+            const myChart = echarts.init(container);
+            
+            const option = {
+                tooltip: {
+                    position: 'top',
+                    backgroundColor: 'rgba(0, 0, 0, 0.8)',
+                    textStyle: {
+                        color: '#fff',
+                        fontSize: 13
+                    },
+                    formatter: function(params) {
+                        const item = datosHeatmap[params.dataIndex];
+                        return `
+                            <div style="padding: 5px;">
+                                <strong>${diasLabels[item.dia]} - ${semanasLabels[item.semana]}</strong><br/>
+                                Venta promedio: <strong>S/ ${item.valor.toLocaleString('es-PE', {maximumFractionDigits: 0})}</strong><br/>
+                                Total: S/ ${item.total.toLocaleString('es-PE', {maximumFractionDigits: 0})}<br/>
+                                Transacciones: ${item.transacciones}
+                            </div>
+                        `;
+                    }
+                },
+                grid: {
+                    left: '10%',
+                    right: '10%',
+                    top: '10%',
+                    bottom: '15%',
+                    containLabel: true
+                },
+                xAxis: {
+                    type: 'category',
+                    data: diasLabels,
+                    splitArea: {
+                        show: true
+                    },
+                    axisLabel: {
+                        fontSize: 12,
+                        fontWeight: '500'
+                    }
+                },
+                yAxis: {
+                    type: 'category',
+                    data: semanasLabels,
+                    splitArea: {
+                        show: true
+                    },
+                    axisLabel: {
+                        fontSize: 12,
+                        fontWeight: '500'
+                    }
+                },
+                visualMap: {
+                    min: 0,
+                    max: maxValor,
+                    calculable: true,
+                    orient: 'horizontal',
+                    left: 'center',
+                    bottom: '0%',
+                    inRange: {
+                        color: ['#f0f9ff', '#bae7ff', '#69c0ff', '#1890ff', '#0050b3', '#003a8c']
+                    },
+                    textStyle: {
+                        fontSize: 11
+                    },
+                    formatter: function(value) {
+                        return 'S/ ' + (value / 1000).toFixed(0) + 'K';
+                    }
+                },
+                series: [{
+                    name: 'Ventas',
+                    type: 'heatmap',
+                    data: data,
+                    label: {
+                        show: false
+                    },
+                    emphasis: {
+                        itemStyle: {
+                            shadowBlur: 10,
+                            shadowColor: 'rgba(0, 0, 0, 0.5)'
+                        }
+                    }
+                }]
+            };
+            
+            myChart.setOption(option);
+            console.log('✅ Heatmap de actividad creado exitosamente');
+        } catch (error) {
+            console.error('❌ Error al crear heatmap:', error);
+        }
+    }
+
+    // Inicializar gráficos nuevos
+    crearGraficoTendencia12Meses();  // Tendencia histórica 12 meses
+    crearGraficoSegmentosRFM();      // Segmentación RFM
+    crearGraficoHeatmapVentas();     // Heatmap de actividad
+    
+    console.log('✅ Todos los gráficos inicializados');
+
     /*
     // Inicializar selector de líneas para el gráfico apilado
     const allLines = allStackedChartData['Forma Farmacéutica'].yAxis.map(line => ({ value: line, text: line }));
@@ -1661,13 +2294,21 @@ document.addEventListener('DOMContentLoaded', function() {
         placeholder: 'Comparar líneas...',
         options: allLines,
         onChange: function() {
+            updateStackedChart();,
+        placeholder: 'Comparar líneas...'
+        options: allLines,
+        onChange: function() {
+            updateStackedChart();,
+        placeholder: 'Comparar líneas...'
+        options: allLines,
+        onChange: function() {
             updateStackedChart();
         }
     });
     lineSelector.setValue(allLines.map(l => l.value)); // Seleccionar todo por defecto
 
     updateStackedChart(); // Carga inicial del nuevo gráfico
-    */
+  } */
 });
 </script>
 

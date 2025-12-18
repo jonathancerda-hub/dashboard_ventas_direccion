@@ -734,6 +734,360 @@ def dashboard():
         print(f"📊 Frecuencia de compra: {len(datos_frecuencia_linea)-1} líneas comerciales procesadas")
         print(f"📊 Frecuencia general: {frecuencia_total:.2f} pedidos/cliente")
 
+        # --- ANÁLISIS RFM (Recency, Frequency, Monetary) ---
+        print(f"📈 Calculando análisis RFM de clientes...")
+        
+        from datetime import datetime as dt, timedelta
+        
+        # Diccionarios para almacenar datos RFM por cliente
+        cliente_recency = {}  # Días desde última compra
+        cliente_frequency = {}  # Número de pedidos
+        cliente_monetary = {}  # Valor total de compras
+        cliente_ultima_fecha = {}  # Fecha de última compra
+        
+        # Calcular RFM para cada cliente
+        fecha_referencia = datetime.now()
+        
+        for sale in sales_data:
+            partner_name = sale.get('partner_name', '').strip()
+            if not partner_name:
+                continue
+            
+            # Excluir VENTA INTERNACIONAL
+            linea_comercial = sale.get('commercial_line_national_id')
+            if linea_comercial and isinstance(linea_comercial, list) and len(linea_comercial) > 1:
+                if 'VENTA INTERNACIONAL' in linea_comercial[1].upper():
+                    continue
+            
+            balance = sale.get('balance', 0)
+            if isinstance(balance, str):
+                balance = float(balance.replace(',', ''))
+            
+            move_id = sale.get('move_id')
+            if isinstance(move_id, list):
+                move_id = move_id[0]
+            
+            # Obtener fecha de factura
+            invoice_date = sale.get('invoice_date')
+            if invoice_date:
+                if isinstance(invoice_date, str):
+                    try:
+                        fecha_venta = dt.strptime(invoice_date, '%Y-%m-%d')
+                    except:
+                        continue
+                else:
+                    fecha_venta = invoice_date
+                
+                # Actualizar fecha más reciente
+                if partner_name not in cliente_ultima_fecha or fecha_venta > cliente_ultima_fecha[partner_name]:
+                    cliente_ultima_fecha[partner_name] = fecha_venta
+            
+            # Frequency: contar pedidos únicos
+            if partner_name not in cliente_frequency:
+                cliente_frequency[partner_name] = set()
+            cliente_frequency[partner_name].add(move_id)
+            
+            # Monetary: sumar valor
+            cliente_monetary[partner_name] = cliente_monetary.get(partner_name, 0) + balance
+        
+        # Calcular recency (días desde última compra)
+        for partner_name, ultima_fecha in cliente_ultima_fecha.items():
+            dias = (fecha_referencia - ultima_fecha).days
+            cliente_recency[partner_name] = dias
+        
+        # Crear lista de clientes con sus métricas RFM
+        clientes_rfm = []
+        for partner_name in cliente_monetary.keys():
+            recency = cliente_recency.get(partner_name, 999)
+            frequency = len(cliente_frequency.get(partner_name, set()))
+            monetary = cliente_monetary.get(partner_name, 0)
+            
+            # Calcular scores RFM (1-3, donde 3 es mejor)
+            # Recency: menor es mejor
+            if recency <= 30:
+                r_score = 3
+            elif recency <= 60:
+                r_score = 2
+            else:
+                r_score = 1
+            
+            # Frequency: mayor es mejor
+            if frequency >= 3:
+                f_score = 3
+            elif frequency >= 2:
+                f_score = 2
+            else:
+                f_score = 1
+            
+            # Monetary: mayor es mejor
+            valores_sorted = sorted([v for v in cliente_monetary.values()], reverse=True)
+            percentil_33 = valores_sorted[len(valores_sorted) // 3] if len(valores_sorted) >= 3 else 0
+            percentil_66 = valores_sorted[len(valores_sorted) * 2 // 3] if len(valores_sorted) >= 3 else 0
+            
+            if monetary >= percentil_33:
+                m_score = 3
+            elif monetary >= percentil_66:
+                m_score = 2
+            else:
+                m_score = 1
+            
+            # Segmentar clientes según RFM
+            rfm_segment = f"{r_score}{f_score}{m_score}"
+            
+            # Mapeo de segmentos a categorías
+            if rfm_segment in ['333', '332', '323', '233']:
+                categoria = 'Campeones'
+                color = '#52c41a'
+            elif rfm_segment in ['331', '322', '313', '232', '223']:
+                categoria = 'Leales'
+                color = '#73d13d'
+            elif rfm_segment in ['321', '312', '311', '221', '213', '212']:
+                categoria = 'Potenciales'
+                color = '#95de64'
+            elif rfm_segment in ['231', '222', '211']:
+                categoria = 'Nuevos'
+                color = '#1890ff'
+            elif rfm_segment in ['133', '132', '131', '123']:
+                categoria = 'En Riesgo'
+                color = '#faad14'
+            elif rfm_segment in ['122', '113', '112', '121']:
+                categoria = 'Hibernando'
+                color = '#ff7a45'
+            elif rfm_segment in ['111']:
+                categoria = 'Perdidos'
+                color = '#ff4d4f'
+            else:
+                categoria = 'Otros'
+                color = '#bfbfbf'
+            
+            clientes_rfm.append({
+                'cliente': partner_name,
+                'recency': recency,
+                'frequency': frequency,
+                'monetary': monetary,
+                'r_score': r_score,
+                'f_score': f_score,
+                'm_score': m_score,
+                'segmento': rfm_segment,
+                'categoria': categoria,
+                'color': color
+            })
+        
+        # Ordenar por valor monetario
+        clientes_rfm_sorted = sorted(clientes_rfm, key=lambda x: x['monetary'], reverse=True)
+        
+        # Estadísticas de segmentación
+        segmentos_rfm = {}
+        for cliente in clientes_rfm:
+            cat = cliente['categoria']
+            if cat not in segmentos_rfm:
+                segmentos_rfm[cat] = {'count': 0, 'valor': 0, 'color': cliente['color']}
+            segmentos_rfm[cat]['count'] += 1
+            segmentos_rfm[cat]['valor'] += cliente['monetary']
+        
+        print(f"📊 Análisis RFM: {len(clientes_rfm)} clientes segmentados en {len(segmentos_rfm)} categorías")
+        
+        # --- TENDENCIA HISTÓRICA (ÚLTIMOS 12 MESES) ---
+        print(f"📈 Generando tendencia histórica de ventas...")
+        
+        tendencia_12_meses = []
+        # Usar fecha actual, no el mes seleccionado (independiente del filtro)
+        fecha_base = datetime.now()
+        
+        # Obtener datos de TODO el año actual (enero a diciembre del año actual)
+        año_actual_tendencia = fecha_base.year
+        fecha_inicio_año_actual = f"{año_actual_tendencia}-01-01"
+        fecha_fin_año_actual = f"{año_actual_tendencia}-12-31"
+        
+        try:
+            sales_año_actual_completo = data_manager.get_sales_lines(
+                date_from=fecha_inicio_año_actual,
+                date_to=fecha_fin_año_actual,
+                limit=50000  # Aumentar límite para obtener todo el año
+            )
+            print(f"📊 Obtenidas {len(sales_año_actual_completo)} líneas del año actual completo")
+        except:
+            sales_año_actual_completo = []
+            print(f"⚠️ Error obteniendo datos del año actual")
+        
+        # Si necesitamos datos de meses del año anterior (ej: si estamos en enero)
+        año_anterior = fecha_base.year - 1
+        fecha_inicio_año_anterior = f"{año_anterior}-01-01"
+        fecha_fin_año_anterior = f"{año_anterior}-12-31"
+        
+        try:
+            sales_año_anterior = data_manager.get_sales_lines(
+                date_from=fecha_inicio_año_anterior,
+                date_to=fecha_fin_año_anterior,
+                limit=50000
+            )
+            print(f"📊 Obtenidas {len(sales_año_anterior)} líneas del año anterior")
+        except:
+            sales_año_anterior = []
+        
+        # Combinar datos del año actual y anterior
+        sales_data_12_meses = sales_año_actual_completo + sales_año_anterior
+        print(f"📊 Total de {len(sales_data_12_meses)} líneas para análisis de tendencia histórica")
+        
+        for i in range(11, -1, -1):  # Últimos 12 meses incluyendo el actual
+            # Calcular mes y año correctamente
+            meses_atras = i
+            if fecha_base.month - meses_atras > 0:
+                mes_num = fecha_base.month - meses_atras
+                año_mes = fecha_base.year
+            else:
+                mes_num = 12 + (fecha_base.month - meses_atras)
+                año_mes = fecha_base.year - 1
+            
+            cache_key = f"{año_mes}-{mes_num:02d}"
+            fecha_mes = datetime(año_mes, mes_num, 1)
+            
+            # Intentar obtener del caché o calcular
+            cached = get_cached_data(año_mes, mes_num)
+            if cached and 'kpis' in cached:
+                venta_mes = cached['kpis'].get('venta_total', 0)
+                meta_mes = cached['kpis'].get('meta_total', 0)
+            else:
+                # Calcular desde sales_data_12_meses
+                venta_mes = 0
+                for sale in sales_data_12_meses:
+                    invoice_date = sale.get('invoice_date')
+                    if invoice_date:
+                        if isinstance(invoice_date, str):
+                            try:
+                                fecha_venta = dt.strptime(invoice_date, '%Y-%m-%d')
+                            except:
+                                continue
+                        else:
+                            fecha_venta = invoice_date
+                        
+                        # Filtrar por líneas nacionales (excluir internacional)
+                        linea_comercial = sale.get('commercial_line_national_id')
+                        if linea_comercial and isinstance(linea_comercial, list) and len(linea_comercial) > 1:
+                            if 'VENTA INTERNACIONAL' in linea_comercial[1].upper():
+                                continue
+                        
+                        if fecha_venta.year == año_mes and fecha_venta.month == mes_num:
+                            balance = sale.get('balance', 0)
+                            if isinstance(balance, str):
+                                balance = float(balance.replace(',', ''))
+                            venta_mes += balance
+                
+                # Obtener meta de Google Sheets para ese mes
+                try:
+                    meta_key = f"{año_mes}-{mes_num:02d}"
+                    metas_mes = metas_historicas.get(meta_key, {}).get('metas', {})
+                    meta_mes = sum(metas_mes.values())
+                except:
+                    meta_mes = 0
+            
+            tendencia_12_meses.append({
+                'mes': cache_key,
+                'mes_nombre': fecha_mes.strftime('%b %Y'),
+                'venta': venta_mes,
+                'meta': meta_mes,
+                'cumplimiento': (venta_mes / meta_mes * 100) if meta_mes > 0 else 0
+            })
+        
+        print(f"📊 Tendencia histórica: {len(tendencia_12_meses)} meses procesados")
+        
+        # --- HEATMAP DE ACTIVIDAD DE VENTAS ---
+        print(f"🔥 Generando heatmap de actividad de ventas para {mes_seleccionado}...")
+        
+        # Matriz: Día de semana (0=Lun, 6=Dom) x Semana del mes (0-4)
+        heatmap_data = [[0 for _ in range(7)] for _ in range(5)]  # 5 semanas x 7 días
+        heatmap_count = [[0 for _ in range(7)] for _ in range(5)]  # Contador para promedios
+        
+        transacciones_procesadas = 0
+        for sale in sales_data:
+            invoice_date = sale.get('invoice_date')
+            if not invoice_date:
+                continue
+            
+            if isinstance(invoice_date, str):
+                try:
+                    fecha_venta = dt.strptime(invoice_date, '%Y-%m-%d')
+                except:
+                    continue
+            else:
+                fecha_venta = invoice_date
+            
+            # Excluir VENTA INTERNACIONAL
+            linea_comercial = sale.get('commercial_line_national_id')
+            if linea_comercial and isinstance(linea_comercial, list) and len(linea_comercial) > 1:
+                if 'VENTA INTERNACIONAL' in linea_comercial[1].upper():
+                    continue
+            
+            balance = sale.get('balance', 0)
+            if isinstance(balance, str):
+                balance = float(balance.replace(',', ''))
+            
+            # Día de la semana (0=Lunes, 6=Domingo)
+            dia_semana = fecha_venta.weekday()
+            
+            # Semana del mes (0-4)
+            dia_mes = fecha_venta.day
+            semana_mes = min((dia_mes - 1) // 7, 4)  # Máximo 5 semanas
+            
+            heatmap_data[semana_mes][dia_semana] += balance
+            heatmap_count[semana_mes][dia_semana] += 1
+            transacciones_procesadas += 1
+        
+        # Preparar datos para el frontend (formato para ECharts heatmap)
+        heatmap_ventas = []
+        dias_labels = ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom']
+        semanas_labels = ['Semana 1', 'Semana 2', 'Semana 3', 'Semana 4', 'Semana 5']
+        
+        max_venta_dia = 0
+        celdas_activas = 0
+        for semana_idx in range(5):
+            for dia_idx in range(7):
+                venta = heatmap_data[semana_idx][dia_idx]
+                count = heatmap_count[semana_idx][dia_idx]
+                # Promedio de venta por día
+                venta_promedio = venta / count if count > 0 else 0
+                
+                if count > 0:
+                    celdas_activas += 1
+                
+                heatmap_ventas.append({
+                    'semana': semana_idx,
+                    'dia': dia_idx,
+                    'valor': venta_promedio,
+                    'total': venta,
+                    'transacciones': count
+                })
+                
+                if venta_promedio > max_venta_dia:
+                    max_venta_dia = venta_promedio
+        
+        print(f"🔥 Heatmap generado: {transacciones_procesadas} transacciones procesadas, {celdas_activas} celdas con actividad")
+        
+        # --- CLIENTES EN RIESGO ---
+        print(f"⚠️ Identificando clientes en riesgo...")
+        
+        clientes_riesgo = []
+        for cliente in clientes_rfm:
+            # Clientes en riesgo: sin compras en 60+ días o frecuencia < 1
+            if cliente['recency'] >= 60 or cliente['frequency'] < 2:
+                nivel_riesgo = 'Alto' if cliente['recency'] >= 90 else 'Medio'
+                color_riesgo = '#ff4d4f' if nivel_riesgo == 'Alto' else '#faad14'
+                
+                clientes_riesgo.append({
+                    'cliente': cliente['cliente'],
+                    'dias_sin_compra': cliente['recency'],
+                    'frecuencia': cliente['frequency'],
+                    'valor_historico': cliente['monetary'],
+                    'nivel_riesgo': nivel_riesgo,
+                    'color': color_riesgo,
+                    'categoria_rfm': cliente['categoria']
+                })
+        
+        # Ordenar por valor histórico (priorizar clientes valiosos)
+        clientes_riesgo_sorted = sorted(clientes_riesgo, key=lambda x: x['valor_historico'], reverse=True)[:20]  # Top 20
+        
+        print(f"⚠️ Clientes en riesgo identificados: {len(clientes_riesgo_sorted)} de alto valor")
+
         # --- Procesamiento de datos para gráficos (después del bucle) ---
 
         # 1. Procesar datos para la tabla principal
@@ -979,6 +1333,13 @@ def dashboard():
             'datos_clientes_por_linea': datos_clientes_por_linea,
             'datos_cobertura_canal': datos_cobertura_canal,
             'datos_frecuencia_linea': datos_frecuencia_linea,
+            'clientes_rfm': clientes_rfm_sorted[:100],  # Top 100 clientes
+            'segmentos_rfm': segmentos_rfm,
+            'tendencia_12_meses': tendencia_12_meses,
+            'clientes_riesgo': clientes_riesgo_sorted,
+            'heatmap_ventas': heatmap_ventas,
+            'heatmap_dias': dias_labels,
+            'heatmap_semanas': semanas_labels,
             'datos_productos': datos_productos,
             'datos_ciclo_vida': datos_ciclo_vida if 'datos_ciclo_vida' in locals() else [],
             'fecha_actual': fecha_actual,
@@ -1035,6 +1396,15 @@ def dashboard():
                              datos_lineas=[], # Se mantiene vacío en caso de error
                              datos_lineas_tabla=[],
                              datos_clientes_por_linea=[], # Nueva tabla vacía en caso de error
+                             datos_cobertura_canal=[],
+                             datos_frecuencia_linea=[],
+                             clientes_rfm=[],
+                             segmentos_rfm={},
+                             tendencia_12_meses=[],
+                             clientes_riesgo=[],
+                             heatmap_ventas=[],
+                             heatmap_dias=['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'],
+                             heatmap_semanas=['Semana 1', 'Semana 2', 'Semana 3', 'Semana 4', 'Semana 5'],
                              datos_productos=[],
                              datos_ciclo_vida=[],
                              fecha_actual=fecha_actual,
