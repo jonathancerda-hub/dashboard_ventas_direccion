@@ -193,7 +193,8 @@ def login():
                     allowed_emails = [email.strip() for email in allowed_emails_env.split(',')]
                 else:
                     # Fallback: leer desde el archivo JSON local
-                    with open('allowed_users.json', 'r') as f:
+                    allowed_users_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'allowed_users.json')
+                    with open(allowed_users_path, 'r') as f:
                         allowed_emails = json.load(f).get('allowed_emails', [])
                 
                 user_login = user_data.get('login')
