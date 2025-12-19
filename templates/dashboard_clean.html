@@ -1825,7 +1825,7 @@ function crearGraficoFrecuenciaLinea() {
         yAxis: {
             type: 'value',
             min: 0,
-            axisLabel: { // Formato para el eje Y
+            axisLabel: {
                 formatter: '{value}'
             }
         },
@@ -1834,10 +1834,12 @@ function crearGraficoFrecuenciaLinea() {
             type: 'bar',
             barWidth: '60%',
             data: dataForChart,
-            label: { // Mostrar el valor encima de cada barra
+            label: {
                 show: true,
                 position: 'top',
-                formatter: '{c}', // 'c' es el valor del dato
+                formatter: function(params) {
+                    return params.value.toFixed(2);
+                },
                 color: '#333'
             }
         }]
@@ -2279,7 +2281,8 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
-    // Inicializar gráficos nuevos
+    // Inicializar gráficos
+    crearGraficoFrecuenciaLinea();   // Frecuencia por línea comercial
     crearGraficoTendencia12Meses();  // Tendencia histórica 12 meses
     crearGraficoSegmentosRFM();      // Segmentación RFM
     crearGraficoHeatmapVentas();     // Heatmap de actividad

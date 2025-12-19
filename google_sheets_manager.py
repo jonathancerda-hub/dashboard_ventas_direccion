@@ -1,6 +1,8 @@
 import gspread
 from google.oauth2.service_account import Credentials
 import pandas as pd
+import os
+import json
 
 class GoogleSheetsManager:
     def __init__(self, credentials_file, sheet_name):
@@ -9,14 +11,27 @@ class GoogleSheetsManager:
                 "https://www.googleapis.com/auth/spreadsheets",
                 "https://www.googleapis.com/auth/drive"
             ]
-            creds = Credentials.from_service_account_file(credentials_file, scopes=scopes)
+            
+            # Soporte para Render.com: usar variable de entorno
+            google_creds_json = os.getenv('GOOGLE_CREDENTIALS_JSON')
+            
+            if google_creds_json:
+                # Producción (Render): leer desde variable de entorno
+                print("🌐 Usando credenciales desde variable de entorno (Render)")
+                creds_dict = json.loads(google_creds_json)
+                creds = Credentials.from_service_account_info(creds_dict, scopes=scopes)
+            else:
+                # Local: usar archivo credentials.json
+                print("💻 Usando archivo credentials.json (Local)")
+                creds = Credentials.from_service_account_file(credentials_file, scopes=scopes)
+            
             self.client = gspread.authorize(creds)
             print(f"ℹ️ Intentando abrir la hoja de cálculo: '{sheet_name}'")
             self.sheet = self.client.open(sheet_name)
             print("✅ Conexión a Google Sheets establecida exitosamente.")
         except Exception as e:
             print(f"❌ Error al conectar con Google Sheets: {e}")
-            print("Asegúrate de que 'credentials.json' existe y el nombre de la hoja en .env es correcto.")
+            print("Asegúrate de que las credenciales están configuradas correctamente.")
             self.client = None
             self.sheet = None
 

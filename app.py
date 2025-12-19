@@ -2098,7 +2098,13 @@ def export_dashboard_details():
 
 
 if __name__ == '__main__':
+    # Soporte para Render.com: usar puerto dinámico
+    port = int(os.environ.get("PORT", 5000))
+    debug_mode = os.environ.get("FLASK_ENV") != "production"
+    
     print("🚀 Iniciando Dashboard de Ventas Farmacéuticas...")
-    print("📊 Disponible en: http://127.0.0.1:5000")
-    print("🔐 Usuario: configurado en .env")
-    app.run(debug=True)
+    print(f"📊 Puerto: {port}")
+    print(f"🔧 Modo debug: {debug_mode}")
+    print("🔐 Usuario: configurado en variables de entorno")
+    
+    app.run(host='0.0.0.0', port=port, debug=debug_mode)
