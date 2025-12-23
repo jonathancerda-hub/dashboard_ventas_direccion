@@ -448,14 +448,14 @@ function cambiarMes(mesSeleccionado) {
     </div>
     
     <!-- Tendencia Histórica de Ventas (12 meses) -->
-    <div class="grafico-container" style="margin-top: 30px; overflow: hidden;">
+    <div class="grafico-container" style="margin-top: 30px;">
         <div class="tabla-header">
             <h3>📈 Tendencia Histórica de Ventas (12 Meses)</h3>
         </div>
         
-        <div style="margin-top: 20px; position: relative; height: 450px; overflow: hidden;">
+        <div style="margin-top: 20px; position: relative;">
             {% if tendencia_12_meses and tendencia_12_meses|length > 0 %}
-            <div style="position: relative; height: 400px; width: 100%;">
+            <div style="position: relative; height: 420px; width: 100%; padding: 10px;">
                 <canvas id="graficoTendencia12Meses"></canvas>
             </div>
             {% else %}
@@ -679,6 +679,100 @@ function cambiarMes(mesSeleccionado) {
                 <div style="font-size: 11px; color: #c41d7f; font-weight: 600; margin-bottom: 5px;">🎯 ESTRATEGIA COMERCIAL</div>
                 <div style="font-size: 13px; color: #333; line-height: 1.5;">
                     Lanzar campañas promocionales en días de baja actividad para incrementar ventas
+                </div>
+            </div>
+        </div>
+    </div>
+    
+    <!-- 🗺️ MAPA GEOGRÁFICO DE PENETRACIÓN -->
+    <div class="grafico-container" style="margin-top: 30px; overflow: hidden;">
+        <h3 style="margin-bottom: 20px;">
+            <span style="font-size: 22px;">🗺️</span>
+            Mapa Geográfico de Penetración por Departamento
+        </h3>
+        
+        <div style="background: #f0f5ff; padding: 12px 15px; border-left: 4px solid #1890ff; border-radius: 4px; margin-bottom: 20px; font-size: 13px;">
+            <div style="font-weight: 600; margin-bottom: 6px; color: #0050b3;">🎯 ¿Qué muestra?</div>
+            <div style="color: #666; line-height: 1.6;">
+                Distribución de ventas por región/departamento para identificar <strong>zonas de alta penetración</strong> vs. 
+                <strong>oportunidades de mercado sin explotar ("zonas blancas")</strong>. 
+                <strong>Acción:</strong> Expandir cobertura en departamentos con bajo volumen pero alto potencial.
+            </div>
+        </div>
+        
+        <div style="position: relative; height: 450px; width: 100%;">
+            <div id="graficoMapaGeografico" style="width: 100%; height: 100%;"></div>
+        </div>
+        
+        <!-- Tabla de Departamentos -->
+        <div style="margin-top: 20px;">
+            <h4 style="font-size: 14px; font-weight: 600; margin-bottom: 12px; color: #333;">📋 Detalle por Departamento</h4>
+            <div style="max-height: 300px; overflow-y: auto; border: 1px solid #e8e8e8; border-radius: 8px;">
+                <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                    <thead style="position: sticky; top: 0; background: #fafafa; z-index: 1;">
+                        <tr>
+                            <th style="padding: 10px; text-align: left; font-weight: 600; border-bottom: 2px solid #e8e8e8;">Departamento</th>
+                            <th style="padding: 10px; text-align: right; font-weight: 600; border-bottom: 2px solid #e8e8e8;">Ventas (S/)</th>
+                            <th style="padding: 10px; text-align: center; font-weight: 600; border-bottom: 2px solid #e8e8e8;">Clientes</th>
+                            <th style="padding: 10px; text-align: center; font-weight: 600; border-bottom: 2px solid #e8e8e8;">Transacciones</th>
+                            <th style="padding: 10px; text-align: right; font-weight: 600; border-bottom: 2px solid #e8e8e8;">Participación</th>
+                            <th style="padding: 10px; text-align: right; font-weight: 600; border-bottom: 2px solid #e8e8e8;">Ticket Prom.</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        {% for region in datos_geograficos %}
+                        <tr style="border-bottom: 1px solid #f0f0f0; {% if loop.index <= 3 %}background: #f6ffed;{% endif %}">
+                            <td style="padding: 10px; font-weight: {% if loop.index <= 3 %}600{% else %}400{% endif %};">
+                                {% if loop.index == 1 %}🥇{% elif loop.index == 2 %}🥈{% elif loop.index == 3 %}🥉{% else %}📍{% endif %}
+                                {{ region.region }}
+                            </td>
+                            <td style="padding: 10px; text-align: right; font-family: 'Courier New', monospace;">
+                                <strong>{{ "S/ {:,.0f}".format(region.ventas) }}</strong>
+                            </td>
+                            <td style="padding: 10px; text-align: center;">
+                                <span style="background: #e6f7ff; padding: 3px 10px; border-radius: 12px; font-weight: 600; color: #0050b3;">
+                                    {{ region.clientes }}
+                                </span>
+                            </td>
+                            <td style="padding: 10px; text-align: center; color: #666;">
+                                {{ region.transacciones }}
+                            </td>
+                            <td style="padding: 10px; text-align: right;">
+                                <div style="display: flex; align-items: center; justify-content: flex-end; gap: 8px;">
+                                    <div style="flex: 1; max-width: 80px; height: 6px; background: #f0f0f0; border-radius: 3px; overflow: hidden;">
+                                        <div style="width: {{ region.participacion }}%; height: 100%; background: linear-gradient(90deg, #52c41a, #73d13d);"></div>
+                                    </div>
+                                    <span style="font-weight: 600; color: #52c41a; min-width: 50px;">{{ "%.1f"|format(region.participacion) }}%</span>
+                                </div>
+                            </td>
+                            <td style="padding: 10px; text-align: right; font-family: 'Courier New', monospace; color: #666;">
+                                S/ {{ "{:,.0f}".format(region.ticket_promedio) }}
+                            </td>
+                        </tr>
+                        {% endfor %}
+                    </tbody>
+                </table>
+            </div>
+        </div>
+        
+        <!-- Insights automáticos -->
+        <div style="margin-top: 20px; display: grid; grid-template-columns: repeat(3, 1fr); gap: 15px;">
+            <div style="padding: 15px; background: linear-gradient(135deg, #e6fffb 0%, #b5f5ec 100%); border-radius: 8px;">
+                <div style="font-size: 11px; color: #006d75; font-weight: 600; margin-bottom: 5px;">🗺️ EXPANSIÓN DE MERCADO</div>
+                <div style="font-size: 13px; color: #333; line-height: 1.5;">
+                    Identificar "zonas blancas" para dirigir la expansión y capturar nuevo mercado potencial
+                </div>
+            </div>
+            <div style="padding: 15px; background: linear-gradient(135deg, #fff7e6 0%, #ffd591 100%); border-radius: 8px;">
+                <div style="font-size: 11px; color: #d46b08; font-weight: 600; margin-bottom: 5px;">🚚 OPTIMIZACIÓN LOGÍSTICA</div>
+                <div style="font-size: 13px; color: #333; line-height: 1.5;">
+                    Rediseñar rutas comerciales basándose en la concentración de clientes por departamento
+                </div>
+            </div>
+            <div style="padding: 15px; background: linear-gradient(135deg, #f9f0ff 0%, #d3adf7 100%); border-radius: 8px;">
+                <div style="font-size: 11px; color: #531dab; font-weight: 600; margin-bottom: 5px;">🎯 MARKETING LOCALIZADO</div>
+                <div style="font-size: 13px; color: #333; line-height: 1.5;">
+                    Lanzar campañas específicas según características demográficas de cada región
                 </div>
             </div>
         </div>
@@ -2281,11 +2375,208 @@ document.addEventListener('DOMContentLoaded', function() {
         }
     }
 
+    // Función para crear el mapa geográfico de penetración
+    function crearGraficoMapaGeografico() {
+        console.log('🗺️ Creando mapa geográfico de penetración...');
+        
+        const container = document.getElementById('graficoMapaGeografico');
+        if (!container) {
+            console.error('❌ Contenedor #graficoMapaGeografico no encontrado');
+            return;
+        }
+        
+        // Obtener datos de regiones desde Jinja
+        const datosRegiones = {{ datos_geograficos | tojson | safe }};
+        
+        if (!datosRegiones || datosRegiones.length === 0) {
+            console.warn('⚠️ No hay datos geográficos disponibles');
+            container.innerHTML = '<div style="padding: 40px; text-align: center; color: #999;">No hay datos disponibles</div>';
+            return;
+        }
+        
+        console.log(`📊 Datos geográficos cargados: ${datosRegiones.length} regiones`);
+        
+        // Preparar datos para el gráfico de barras
+        const regiones = datosRegiones.map(d => d.region);
+        const ventas = datosRegiones.map(d => d.ventas);
+        const clientes = datosRegiones.map(d => d.clientes);
+        const participacion = datosRegiones.map(d => d.participacion);
+        
+        // Encontrar valores máximos para escalar colores
+        const maxVentas = Math.max(...ventas);
+        
+        try {
+            const myChart = echarts.init(container);
+            
+            const option = {
+                tooltip: {
+                    trigger: 'axis',
+                    axisPointer: {
+                        type: 'shadow'
+                    },
+                    backgroundColor: 'rgba(0, 0, 0, 0.85)',
+                    borderColor: '#1890ff',
+                    borderWidth: 1,
+                    textStyle: {
+                        color: '#fff',
+                        fontSize: 13
+                    },
+                    formatter: function(params) {
+                        const idx = params[0].dataIndex;
+                        const region = datosRegiones[idx];
+                        return `
+                            <div style="padding: 8px;">
+                                <div style="font-weight: 700; font-size: 14px; margin-bottom: 8px; border-bottom: 1px solid rgba(255,255,255,0.3); padding-bottom: 6px;">
+                                    🗺️ ${region.region}
+                                </div>
+                                <div style="margin: 4px 0;">
+                                    💰 <strong>Ventas:</strong> S/ ${region.ventas.toLocaleString('es-PE', {minimumFractionDigits: 0, maximumFractionDigits: 0})}
+                                </div>
+                                <div style="margin: 4px 0;">
+                                    👥 <strong>Clientes:</strong> ${region.clientes}
+                                </div>
+                                <div style="margin: 4px 0;">
+                                    📦 <strong>Transacciones:</strong> ${region.transacciones}
+                                </div>
+                                <div style="margin: 4px 0;">
+                                    📊 <strong>Participación:</strong> ${region.participacion.toFixed(1)}%
+                                </div>
+                                <div style="margin: 4px 0;">
+                                    🎫 <strong>Ticket Promedio:</strong> S/ ${region.ticket_promedio.toLocaleString('es-PE', {minimumFractionDigits: 0, maximumFractionDigits: 0})}
+                                </div>
+                            </div>
+                        `;
+                    }
+                },
+                grid: {
+                    left: '5%',
+                    right: '5%',
+                    bottom: '3%',
+                    top: '5%',
+                    containLabel: true
+                },
+                xAxis: {
+                    type: 'value',
+                    name: 'Ventas (S/)',
+                    nameLocation: 'middle',
+                    nameGap: 30,
+                    nameTextStyle: {
+                        fontSize: 13,
+                        fontWeight: 600,
+                        color: '#666'
+                    },
+                    axisLabel: {
+                        formatter: function(value) {
+                            if (value >= 1000000) {
+                                return (value / 1000000).toFixed(1) + 'M';
+                            } else if (value >= 1000) {
+                                return (value / 1000).toFixed(0) + 'K';
+                            }
+                            return value;
+                        },
+                        fontSize: 12,
+                        color: '#666'
+                    },
+                    splitLine: {
+                        lineStyle: {
+                            color: '#f0f0f0',
+                            type: 'dashed'
+                        }
+                    }
+                },
+                yAxis: {
+                    type: 'category',
+                    data: regiones,
+                    axisLabel: {
+                        fontSize: 12,
+                        color: '#333',
+                        fontWeight: 500,
+                        formatter: function(value) {
+                            // Truncar nombres muy largos
+                            if (value.length > 20) {
+                                return value.substring(0, 18) + '...';
+                            }
+                            return value;
+                        }
+                    },
+                    axisTick: {
+                        show: false
+                    },
+                    axisLine: {
+                        lineStyle: {
+                            color: '#e8e8e8'
+                        }
+                    }
+                },
+                series: [
+                    {
+                        name: 'Ventas por Región',
+                        type: 'bar',
+                        data: ventas.map((value, idx) => {
+                            // Calcular intensidad de color basada en ventas
+                            const intensidad = value / maxVentas;
+                            let color;
+                            
+                            if (intensidad > 0.7) {
+                                color = '#52c41a';  // Verde intenso (alta penetración)
+                            } else if (intensidad > 0.4) {
+                                color = '#1890ff';  // Azul (penetración media)
+                            } else if (intensidad > 0.2) {
+                                color = '#faad14';  // Naranja (penetración baja)
+                            } else {
+                                color = '#ff4d4f';  // Rojo (oportunidad - zona blanca)
+                            }
+                            
+                            return {
+                                value: value,
+                                itemStyle: {
+                                    color: color,
+                                    borderRadius: [0, 4, 4, 0]
+                                }
+                            };
+                        }),
+                        barMaxWidth: 30,
+                        label: {
+                            show: true,
+                            position: 'right',
+                            formatter: function(params) {
+                                const idx = params.dataIndex;
+                                const region = datosRegiones[idx];
+                                return `${region.participacion.toFixed(1)}%`;
+                            },
+                            fontSize: 11,
+                            fontWeight: 600,
+                            color: '#666'
+                        },
+                        emphasis: {
+                            focus: 'series',
+                            itemStyle: {
+                                shadowBlur: 10,
+                                shadowColor: 'rgba(0, 0, 0, 0.3)'
+                            }
+                        }
+                    }
+                ]
+            };
+            
+            myChart.setOption(option);
+            console.log('✅ Mapa geográfico creado exitosamente');
+            
+            // Hacer responsive
+            window.addEventListener('resize', function() {
+                myChart.resize();
+            });
+        } catch (error) {
+            console.error('❌ Error al crear mapa geográfico:', error);
+        }
+    }
+
     // Inicializar gráficos
     crearGraficoFrecuenciaLinea();   // Frecuencia por línea comercial
     crearGraficoTendencia12Meses();  // Tendencia histórica 12 meses
     crearGraficoSegmentosRFM();      // Segmentación RFM
     crearGraficoHeatmapVentas();     // Heatmap de actividad
+    crearGraficoMapaGeografico();    // Mapa geográfico de penetración
     
     console.log('✅ Todos los gráficos inicializados');
 

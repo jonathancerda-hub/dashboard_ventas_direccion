@@ -459,7 +459,7 @@ class OdooManager:
                 partners = self.models.execute_kw(
                     self.db, self.uid, self.password, 'res.partner', 'search_read',
                     [[('id', 'in', partner_ids)]],
-                    {'fields': ['vat', 'name'], 'context': {'lang': 'es_PE'}}
+                    {'fields': ['vat', 'name', 'state_id', 'city', 'country_id'], 'context': {'lang': 'es_PE'}}
                 )
                 partner_data = {p['id']: p for p in partners}
                 print(f"✅ Clientes: {len(partner_data)} registros")
@@ -659,6 +659,11 @@ class OdooManager:
                         
                         # 28. IMP (Impuesto)
                         'tax_id': imp_str,
+                        
+                        # Campos geográficos (para análisis territorial)
+                        'state_id': partner.get('state_id'),      # Departamento/Estado
+                        'city': partner.get('city'),              # Ciudad
+                        'country_id': partner.get('country_id'),  # País
                         
                         # Campos adicionales para compatibilidad
                         'move_id': line.get('move_id'),
