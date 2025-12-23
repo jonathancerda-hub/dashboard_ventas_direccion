@@ -428,7 +428,8 @@ def dashboard():
                 sales_historico = data_manager.get_sales_lines(
                     date_from=fecha_inicio_ano,
                     date_to=fecha_fin_mes_sel,
-                limit=5000  # Reducido para Render (memoria limitada)
+                    limit=5000  # Reducido para Render (memoria limitada)
+                )
                 clientes_historicos = set()
                 for sale in sales_historico:
                     partner_name = sale.get('partner_name', '').strip()
