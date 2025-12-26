@@ -660,11 +660,11 @@ class OdooManager:
                         # 28. IMP (Impuesto)
                         'tax_id': imp_str,
                         
-                        # Campos geográficos
-                        'state_id': partner.get('state_id'),
-                        'city': partner.get('city'),
-                        'country_id': partner.get('country_id'),
-
+                        # Campos geográficos (para análisis territorial)
+                        'state_id': partner.get('state_id'),      # Departamento/Estado
+                        'city': partner.get('city'),              # Ciudad
+                        'country_id': partner.get('country_id'),  # País
+                        
                         # Campos adicionales para compatibilidad
                         'move_id': line.get('move_id'),
                         'partner_id': line.get('partner_id')

@@ -429,10 +429,8 @@ def dashboard():
                 sales_historico = data_manager.get_sales_lines(
                     date_from=fecha_inicio_ano,
                     date_to=fecha_fin_mes_sel,
-                    limit=20000
+                    limit=5000  # Reducido para Render (memoria limitada)
                 )
-                
-                # Contar clientes únicos históricos
                 clientes_historicos = set()
                 for sale in sales_historico:
                     partner_name = sale.get('partner_name', '').strip()
@@ -905,7 +903,7 @@ def dashboard():
             sales_año_actual_completo = data_manager.get_sales_lines(
                 date_from=fecha_inicio_año_actual,
                 date_to=fecha_fin_año_actual,
-                limit=50000  # Aumentar límite para obtener todo el año
+                limit=10000  # Reducido para Render (memoria limitada)
             )
             print(f"📊 Obtenidas {len(sales_año_actual_completo)} líneas del año actual completo")
         except:
@@ -921,7 +919,7 @@ def dashboard():
             sales_año_anterior = data_manager.get_sales_lines(
                 date_from=fecha_inicio_año_anterior,
                 date_to=fecha_fin_año_anterior,
-                limit=50000
+                limit=10000  # Reducido para Render (memoria limitada)
             )
             print(f"📊 Obtenidas {len(sales_año_anterior)} líneas del año anterior")
         except:
@@ -1089,6 +1087,78 @@ def dashboard():
         clientes_riesgo_sorted = sorted(clientes_riesgo, key=lambda x: x['valor_historico'], reverse=True)[:20]  # Top 20
         
         print(f"⚠️ Clientes en riesgo identificados: {len(clientes_riesgo_sorted)} de alto valor")
+        
+        # --- MAPA GEOGRÁFICO DE PENETRACIÓN ---
+        print(f"🗺️ Generando análisis geográfico por departamento...")
+        
+        ventas_por_region = {}
+        clientes_por_region = {}
+        transacciones_por_region = {}
+        
+        # Procesar ventas actuales del mes seleccionado
+        for sale in sales_data:
+            partner_id = sale.get('partner_id')
+            balance = sale.get('balance', 0)
+            
+            # Filtrar ventas internacionales
+            partner_name = sale.get('partner_name', '')
+            if partner_name == 'VENTA INTERNACIONAL':
+                continue
+            
+            if partner_id and isinstance(partner_id, (list, tuple)) and len(partner_id) > 0:
+                partner_id = partner_id[0]
+            
+            # Obtener state_id del sale (ya viene del partner)
+            state_id = sale.get('state_id')
+            
+            if state_id:
+                if isinstance(state_id, (list, tuple)) and len(state_id) > 1:
+                    region_name = state_id[1]  # El nombre del departamento está en la posición 1
+                else:
+                    region_name = "Sin departamento"
+            else:
+                region_name = "Sin departamento"
+            
+            # Acumular ventas por región
+            if region_name not in ventas_por_region:
+                ventas_por_region[region_name] = 0
+                clientes_por_region[region_name] = set()
+                transacciones_por_region[region_name] = 0
+            
+            ventas_por_region[region_name] += balance
+            if partner_id:
+                clientes_por_region[region_name].add(partner_id)
+            transacciones_por_region[region_name] += 1
+        
+        # Convertir sets a counts
+        clientes_count_por_region = {k: len(v) for k, v in clientes_por_region.items()}
+        
+        # Crear lista ordenada de regiones
+        datos_geograficos = []
+        total_ventas_geo = sum(ventas_por_region.values())
+        total_clientes_geo = sum(clientes_count_por_region.values())
+        
+        for region in ventas_por_region:
+            ventas = ventas_por_region[region]
+            clientes = clientes_count_por_region[region]
+            transacciones = transacciones_por_region[region]
+            
+            participacion = (ventas / total_ventas_geo * 100) if total_ventas_geo > 0 else 0
+            ticket_promedio = (ventas / transacciones) if transacciones > 0 else 0
+            
+            datos_geograficos.append({
+                'region': region,
+                'ventas': ventas,
+                'clientes': clientes,
+                'transacciones': transacciones,
+                'participacion': participacion,
+                'ticket_promedio': ticket_promedio
+            })
+        
+        # Ordenar por ventas descendente
+        datos_geograficos_sorted = sorted(datos_geograficos, key=lambda x: x['ventas'], reverse=True)
+        
+        print(f"🗺️ Análisis geográfico: {len(datos_geograficos_sorted)} regiones identificadas, S/ {total_ventas_geo:,.2f} en ventas totales")
 
         # --- ANÁLISIS GEOGRÁFICO DE VENTAS ---
         print("🗺️ Generando análisis geográfico de ventas...")
@@ -1414,7 +1484,11 @@ def dashboard():
             'heatmap_ventas': heatmap_ventas,
             'heatmap_dias': dias_labels,
             'heatmap_semanas': semanas_labels,
+<<<<<<< HEAD
             'mapa_ventas_data': mapa_ventas_data,
+=======
+            'datos_geograficos': datos_geograficos_sorted,  # Nuevo: Mapa geográfico
+>>>>>>> 8880ed7fe8e309d92ca2833d029c9f8d287e1631
             'datos_productos': datos_productos,
             'datos_ciclo_vida': datos_ciclo_vida if 'datos_ciclo_vida' in locals() else [],
             'fecha_actual': fecha_actual,
