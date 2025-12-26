@@ -1484,11 +1484,8 @@ def dashboard():
             'heatmap_ventas': heatmap_ventas,
             'heatmap_dias': dias_labels,
             'heatmap_semanas': semanas_labels,
-<<<<<<< HEAD
             'mapa_ventas_data': mapa_ventas_data,
-=======
             'datos_geograficos': datos_geograficos_sorted,  # Nuevo: Mapa geográfico
->>>>>>> 8880ed7fe8e309d92ca2833d029c9f8d287e1631
             'datos_productos': datos_productos,
             'datos_ciclo_vida': datos_ciclo_vida if 'datos_ciclo_vida' in locals() else [],
             'fecha_actual': fecha_actual,
