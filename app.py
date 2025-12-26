@@ -32,9 +32,16 @@ ADMIN_USERS = [email.strip() for email in ADMIN_USERS if email.strip()]
 app.config['TEMPLATES_AUTO_RELOAD'] = True
 app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 
+
 # --- Sistema de Caché para Datos de Meses ---
 CACHE_DIR = os.path.join(os.path.dirname(__file__), '__pycache__', 'dashboard_cache')
 os.makedirs(CACHE_DIR, exist_ok=True)
+
+# --- Límite de líneas de ventas (para evitar sobrecarga en Render) ---
+try:
+    SALES_LIMIT = int(os.getenv('SALES_LIMIT', '5000'))
+except Exception:
+    SALES_LIMIT = 5000
 
 def get_cache_key(año, mes):
     """Genera una clave única para el caché basada en año y mes."""
@@ -363,6 +370,7 @@ def dashboard():
         fecha_inicio = f"{año_sel}-{mes_sel}-01"
         # --- FIN DE LA NUEVA LÓGICA ---
 
+
         # Intentar obtener datos del caché
         cached_result = get_cached_data(año_sel_int, mes_sel_int)
         if cached_result:
@@ -374,11 +382,40 @@ def dashboard():
             cached_result['mes_nombre'] = mes_nombre
             cached_result['desde_cache'] = True  # Indicador para el template
             return render_template('dashboard_clean.html', **cached_result)
-        
-        if is_current_month(año_sel_int, mes_sel_int):
-            print(f"🔄 Mes actual ({mes_seleccionado}): Obteniendo datos actualizados desde Odoo...")
-        else:
-            print(f"🔄 Primera carga de {mes_seleccionado}, generando caché para futuras consultas...")
+
+        # Si NO es el mes actual y no hay caché, mostrar mensaje y no intentar recalcular
+        if not is_current_month(año_sel_int, mes_sel_int):
+            flash('Los datos de este mes aún no están disponibles. Por favor, contacta al administrador para que genere el caché o espera unos minutos.', 'warning')
+            return render_template('dashboard_clean.html',
+                                 meses_disponibles=meses_disponibles,
+                                 mes_seleccionado=mes_seleccionado,
+                                 mes_nombre=mes_nombre,
+                                 dia_actual=fecha_actual.day,
+                                 kpis={},
+                                 datos_lineas=[],
+                                 datos_lineas_tabla=[],
+                                 datos_clientes_por_linea=[],
+                                 datos_cobertura_canal=[],
+                                 datos_frecuencia_linea=[],
+                                 clientes_rfm=[],
+                                 segmentos_rfm={},
+                                 tendencia_12_meses=[],
+                                 clientes_riesgo=[],
+                                 heatmap_ventas=[],
+                                 heatmap_dias=['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'],
+                                 heatmap_semanas=['Semana 1', 'Semana 2', 'Semana 3', 'Semana 4', 'Semana 5'],
+                                 datos_productos=[],
+                                 datos_ciclo_vida=[],
+                                 fecha_actual=fecha_actual,
+                                 avance_lineal_pct=0,
+                                 faltante_meta=0,
+                                 datos_ecommerce=[],
+                                 kpis_ecommerce={},
+                                 is_admin=is_admin,
+                                 desde_cache=False)
+
+        # Si es el mes actual, obtener datos frescos
+        print(f"🔄 Mes actual ({mes_seleccionado}): Obteniendo datos actualizados desde Odoo...")
 
         # Obtener metas del mes seleccionado desde la sesión
         metas_historicas = gs_manager.read_metas_por_linea()
@@ -413,7 +450,7 @@ def dashboard():
             sales_data = data_manager.get_sales_lines(
                 date_from=fecha_inicio,
                 date_to=fecha_fin,
-                limit=5000
+                limit=SALES_LIMIT
             )
             
             print(f"📊 Obtenidas {len(sales_data)} líneas de ventas para el dashboard")
@@ -428,7 +465,7 @@ def dashboard():
                 sales_historico = data_manager.get_sales_lines(
                     date_from=fecha_inicio_ano,
                     date_to=fecha_fin_mes_sel,
-                    limit=20000
+                    limit=SALES_LIMIT * 2
                 )
                 
                 # Contar clientes únicos históricos
@@ -904,7 +941,7 @@ def dashboard():
             sales_año_actual_completo = data_manager.get_sales_lines(
                 date_from=fecha_inicio_año_actual,
                 date_to=fecha_fin_año_actual,
-                limit=50000  # Aumentar límite para obtener todo el año
+                limit=SALES_LIMIT * 10
             )
             print(f"📊 Obtenidas {len(sales_año_actual_completo)} líneas del año actual completo")
         except:
@@ -920,7 +957,7 @@ def dashboard():
             sales_año_anterior = data_manager.get_sales_lines(
                 date_from=fecha_inicio_año_anterior,
                 date_to=fecha_fin_año_anterior,
-                limit=50000
+                limit=SALES_LIMIT * 10
             )
             print(f"📊 Obtenidas {len(sales_año_anterior)} líneas del año anterior")
         except:
