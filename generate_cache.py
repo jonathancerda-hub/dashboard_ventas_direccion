@@ -31,9 +31,50 @@ def generar_cache_para_mes(año, mes):
             'venta_total': total_venta,
             'porcentaje_avance': (total_venta / total_meta * 100) if total_meta > 0 else 0
         }
-        cache_data = {'kpis': kpis}
+
+        # --- Calcular tendencia_12_meses ---
+        tendencia_12_meses = []
+        from datetime import datetime as dt
+        fecha_base = dt(año, mes, 1)
+        for i in range(11, -1, -1):
+            if mes - i > 0:
+                mes_num = mes - i
+                año_mes = año
+            else:
+                mes_num = 12 + (mes - i)
+                año_mes = año - 1
+            key_mes = f"{año_mes}-{mes_num:02d}"
+            # Obtener ventas y metas del mes
+            ventas_mes = 0
+            for s in sales_data:
+                invoice_date = s.get('invoice_date')
+                if invoice_date:
+                    if isinstance(invoice_date, str):
+                        try:
+                            fecha_venta = dt.strptime(invoice_date, '%Y-%m-%d')
+                        except:
+                            continue
+                    else:
+                        fecha_venta = invoice_date
+                    if fecha_venta.year == año_mes and fecha_venta.month == mes_num:
+                        balance = s.get('balance', 0)
+                        if isinstance(balance, str):
+                            balance = float(balance.replace(',', ''))
+                        ventas_mes += balance
+            metas_mes = metas_historicas.get(key_mes, {}).get('metas', {})
+            meta_mes = sum(metas_mes.values())
+            fecha_mes = dt(año_mes, mes_num, 1)
+            tendencia_12_meses.append({
+                'mes': key_mes,
+                'mes_nombre': fecha_mes.strftime('%b %Y'),
+                'venta': ventas_mes,
+                'meta': meta_mes,
+                'cumplimiento': (ventas_mes / meta_mes * 100) if meta_mes > 0 else 0
+            })
+
+        cache_data = {'kpis': kpis, 'tendencia_12_meses': tendencia_12_meses}
         save_to_cache(año, mes, cache_data)
-        print(f"✅ Caché generado para {año}-{mes:02d}")
+        print(f"✅ Caché generado para {año}-{mes:02d} (incluye tendencia_12_meses)")
     except Exception as e:
         print(f"❌ Error generando caché para {año}-{mes:02d}: {e}")
 
