@@ -9,6 +9,7 @@ import pandas as pd
 import json
 import io
 import calendar
+import re
 from datetime import datetime, timedelta
 from openpyxl.styles import Font, PatternFill, Border, Side, Alignment
 from openpyxl.utils import get_column_letter
@@ -465,10 +466,8 @@ def dashboard():
                 sales_historico = data_manager.get_sales_lines(
                     date_from=fecha_inicio_ano,
                     date_to=fecha_fin_mes_sel,
-                    limit=SALES_LIMIT * 2
+                    limit=20000
                 )
-                
-                # Contar clientes únicos históricos
                 clientes_historicos = set()
                 for sale in sales_historico:
                     partner_name = sale.get('partner_name', '').strip()
@@ -941,7 +940,7 @@ def dashboard():
             sales_año_actual_completo = data_manager.get_sales_lines(
                 date_from=fecha_inicio_año_actual,
                 date_to=fecha_fin_año_actual,
-                limit=SALES_LIMIT * 10
+                limit=50000  # Aumentar límite para obtener todo el año
             )
             print(f"📊 Obtenidas {len(sales_año_actual_completo)} líneas del año actual completo")
         except:
@@ -957,7 +956,7 @@ def dashboard():
             sales_año_anterior = data_manager.get_sales_lines(
                 date_from=fecha_inicio_año_anterior,
                 date_to=fecha_fin_año_anterior,
-                limit=SALES_LIMIT * 10
+                limit=50000
             )
             print(f"📊 Obtenidas {len(sales_año_anterior)} líneas del año anterior")
         except:
@@ -1125,6 +1124,150 @@ def dashboard():
         clientes_riesgo_sorted = sorted(clientes_riesgo, key=lambda x: x['valor_historico'], reverse=True)[:20]  # Top 20
         
         print(f"⚠️ Clientes en riesgo identificados: {len(clientes_riesgo_sorted)} de alto valor")
+        
+        # --- MAPA GEOGRÁFICO DE PENETRACIÓN ---
+        print(f"🗺️ Generando análisis geográfico por departamento...")
+        
+        ventas_por_region = {}
+        clientes_por_region = {}
+        transacciones_por_region = {}
+        
+        # Procesar ventas actuales del mes seleccionado
+        for sale in sales_data:
+            partner_id = sale.get('partner_id')
+            balance = sale.get('balance', 0)
+            
+            # Filtrar ventas internacionales
+            partner_name = sale.get('partner_name', '')
+            if partner_name == 'VENTA INTERNACIONAL':
+                continue
+            
+            if partner_id and isinstance(partner_id, (list, tuple)) and len(partner_id) > 0:
+                partner_id = partner_id[0]
+            
+            # Obtener state_id del sale (ya viene del partner)
+            state_id = sale.get('state_id')
+            
+            if state_id:
+                if isinstance(state_id, (list, tuple)) and len(state_id) > 1:
+                    region_name = state_id[1]  # El nombre del departamento está en la posición 1
+                else:
+                    region_name = "Sin departamento"
+            else:
+                region_name = "Sin departamento"
+            
+            # Acumular ventas por región
+            if region_name not in ventas_por_region:
+                ventas_por_region[region_name] = 0
+                clientes_por_region[region_name] = set()
+                transacciones_por_region[region_name] = 0
+            
+            ventas_por_region[region_name] += balance
+            if partner_id:
+                clientes_por_region[region_name].add(partner_id)
+            transacciones_por_region[region_name] += 1
+        
+        # Convertir sets a counts
+        clientes_count_por_region = {k: len(v) for k, v in clientes_por_region.items()}
+        
+        # Crear lista ordenada de regiones
+        datos_geograficos = []
+        total_ventas_geo = sum(ventas_por_region.values())
+        total_clientes_geo = sum(clientes_count_por_region.values())
+        
+        for region in ventas_por_region:
+            ventas = ventas_por_region[region]
+            clientes = clientes_count_por_region[region]
+            transacciones = transacciones_por_region[region]
+            
+            participacion = (ventas / total_ventas_geo * 100) if total_ventas_geo > 0 else 0
+            ticket_promedio = (ventas / transacciones) if transacciones > 0 else 0
+            
+            datos_geograficos.append({
+                'region': region,
+                'ventas': ventas,
+                'clientes': clientes,
+                'transacciones': transacciones,
+                'participacion': participacion,
+                'ticket_promedio': ticket_promedio
+            })
+        
+        # Ordenar por ventas descendente
+        datos_geograficos_sorted = sorted(datos_geograficos, key=lambda x: x['ventas'], reverse=True)
+        
+        print(f"🗺️ Análisis geográfico: {len(datos_geograficos_sorted)} regiones identificadas, S/ {total_ventas_geo:,.2f} en ventas totales")
+
+        # --- ANÁLISIS GEOGRÁFICO DE VENTAS ---
+        print("🗺️ Generando análisis geográfico de ventas...")
+        ventas_por_departamento = {}
+        sales_processed_for_map = 0
+        sales_skipped_international = 0
+        sales_skipped_non_peru = 0
+        sales_skipped_no_state_info = 0
+
+        for sale in sales_data:
+            # Excluir ventas internacionales
+            linea_comercial = sale.get('commercial_line_national_id')
+            if linea_comercial and isinstance(linea_comercial, list) and len(linea_comercial) > 1:
+                if 'VENTA INTERNACIONAL' in linea_comercial[1].upper():
+                    continue
+            
+            canal_ventas = sale.get('sales_channel_id')
+            if canal_ventas and isinstance(canal_ventas, list) and len(canal_ventas) > 1:
+                if 'VENTA INTERNACIONAL' in canal_ventas[1].upper() or 'INTERNACIONAL' in canal_ventas[1].upper():
+                    continue
+
+            state_info = sale.get('state_id')
+            
+            # Lógica mejorada para identificar ventas de Perú
+            # Asumimos que si no hay información de país, es una venta local (Perú)
+            # Si hay información de país, solo se salta si el nombre del país NO es Perú.
+            is_peru_sale = True
+            country_info = sale.get('country_id')
+            if country_info and isinstance(country_info, list) and len(country_info) > 1:
+                country_name = country_info[1].upper()
+                if "PERU" not in country_name and "PERÚ" not in country_name:
+                    # Es un país explícitamente no-Perú por nombre
+                    sales_skipped_non_peru += 1
+                    is_peru_sale = False
+            
+            if not is_peru_sale:
+                continue
+
+            if state_info and isinstance(state_info, list) and len(state_info) > 1:
+                departamento_nombre_raw = state_info[1]
+                
+                # --- NORMALIZACIÓN DE NOMBRES DE DEPARTAMENTO ---
+                # Convertir a mayúsculas para coincidir con el GeoJSON
+                departamento_nombre = departamento_nombre_raw.upper()
+                
+                # Eliminar sufijos comunes como "(PE)", "(PE )", etc.
+                departamento_nombre = re.sub(r'\s*\(PE\)\s*', '', departamento_nombre, flags=re.IGNORECASE).strip()
+                
+                # Mapeos específicos para corregir discrepancias comunes
+                if 'CALLAO' in departamento_nombre:
+                    departamento_nombre = 'CALLAO'
+                if 'MARTIN' in departamento_nombre:
+                    departamento_nombre = 'SAN MARTIN'
+                
+                # Quitar tildes comunes
+                departamento_nombre = departamento_nombre.replace('Á', 'A').replace('É', 'E').replace('Í', 'I').replace('Ó', 'O').replace('Ú', 'U')
+
+                balance = sale.get('balance', 0)
+                if isinstance(balance, str):
+                    balance = float(balance.replace(',', ''))
+                
+                ventas_por_departamento[departamento_nombre] = ventas_por_departamento.get(departamento_nombre, 0) + balance
+                sales_processed_for_map += 1
+            else:
+                sales_skipped_no_state_info += 1
+
+        # Preparar datos para el mapa
+        mapa_ventas_data = [{'name': dep, 'value': venta} for dep, venta in ventas_por_departamento.items()]
+        print(f"🗺️ Análisis geográfico: {len(mapa_ventas_data)} departamentos con ventas. Total sales processed for map: {sales_processed_for_map}")
+        print(f"  Sales skipped (international): {sales_skipped_international}")
+        print(f"  Sales skipped (non-Peru): {sales_skipped_non_peru}")
+        print(f"  Sales skipped (no state info): {sales_skipped_no_state_info}")
 
         # --- Procesamiento de datos para gráficos (después del bucle) ---
 
@@ -1378,6 +1521,8 @@ def dashboard():
             'heatmap_ventas': heatmap_ventas,
             'heatmap_dias': dias_labels,
             'heatmap_semanas': semanas_labels,
+            'mapa_ventas_data': mapa_ventas_data,
+            'datos_geograficos': datos_geograficos_sorted,  # Nuevo: Mapa geográfico
             'datos_productos': datos_productos,
             'datos_ciclo_vida': datos_ciclo_vida if 'datos_ciclo_vida' in locals() else [],
             'fecha_actual': fecha_actual,
@@ -1443,6 +1588,7 @@ def dashboard():
                              heatmap_ventas=[],
                              heatmap_dias=['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'],
                              heatmap_semanas=['Semana 1', 'Semana 2', 'Semana 3', 'Semana 4', 'Semana 5'],
+                             mapa_ventas_data=[],
                              datos_productos=[],
                              datos_ciclo_vida=[],
                              fecha_actual=fecha_actual,
