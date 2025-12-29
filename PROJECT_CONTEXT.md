@@ -58,7 +58,7 @@ dashboard-ventas/
     ├── dashboard_clean.html  # Dashboard principal
     ├── login.html            # Página de login
     ├── meta.html             # Gestión de metas
-    └── sales.html            # Tabla de ventas detallada
+
 ```
 
 ---

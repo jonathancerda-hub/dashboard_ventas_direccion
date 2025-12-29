@@ -325,6 +325,163 @@ class OdooManager:
             print(f"❌ Error obteniendo cliente {customer_id}: {e}")
             return None
 
+    def get_sales_summary_by_month(self, date_from=None, date_to=None):
+        """
+        Obtiene un resumen de ventas de los ÚLTIMOS 12 MESES completos.
+        Los parámetros date_from/date_to se ignoran para garantizar que siempre
+        se muestren 12 meses en la Tendencia Histórica, independientemente del filtro de mes.
+        """
+        try:
+            if not self.uid or not self.models:
+                return {}
+            
+            # Calcular últimos 12 meses desde hoy
+            from datetime import datetime, timedelta
+            today = datetime.now()
+            date_to_12m = today.strftime('%Y-%m-%d')
+            date_from_12m = (today.replace(day=1) - timedelta(days=365)).strftime('%Y-%m-01')
+            
+            print(f"📊 Obteniendo resumen mensual de últimos 12 meses: {date_from_12m} hasta {date_to_12m}...")
+            
+            # Usar get_sales_lines para obtener datos con filtros consistentes
+            sales_lines = self.get_sales_lines(
+                date_from=date_from_12m,
+                date_to=date_to_12m,
+                limit=None  # Sin límite para obtener todos los datos
+            )
+            
+            print(f"🔍 get_sales_lines devolvió {len(sales_lines)} líneas para agrupar")
+            
+            # Agrupar por mes
+            from collections import defaultdict
+            
+            monthly_totals = defaultdict(float)
+            
+            for line in sales_lines:
+                date_str = line.get('invoice_date')  # Cambiar de 'date' a 'invoice_date'
+                balance = line.get('balance', 0)
+                
+                if date_str:
+                    try:
+                        # Parsear la fecha
+                        date_obj = datetime.strptime(date_str, '%Y-%m-%d')
+                        
+                        # Formatear como "mes año" en español (ej: "diciembre 2025")
+                        month_names = {
+                            1: 'enero', 2: 'febrero', 3: 'marzo', 4: 'abril',
+                            5: 'mayo', 6: 'junio', 7: 'julio', 8: 'agosto',
+                            9: 'septiembre', 10: 'octubre', 11: 'noviembre', 12: 'diciembre'
+                        }
+                        month_key = f"{month_names[date_obj.month]} {date_obj.year}"
+                        
+                        monthly_totals[month_key] += balance
+                    except (ValueError, KeyError) as e:
+                        print(f"⚠️ Error parseando fecha {date_str}: {e}")
+                        continue
+            
+            print(f"✅ Resumen mensual obtenido: {len(monthly_totals)} meses (últimos 12 meses)")
+            return dict(monthly_totals)
+            
+        except Exception as e:
+            print(f"❌ Error obteniendo resumen mensual de Odoo: {e}")
+            import traceback
+            traceback.print_exc()
+            return {}
+
+    def get_active_partners_count(self, date_from, date_to):
+        """
+        Cuenta la cantidad de clientes únicos que han comprado en un rango de fechas.
+        Usa read_group para eficiencia máxima.
+        """
+        try:
+            if not self.uid or not self.models:
+                return 0
+            
+            print(f"👥 Contando clientes únicos desde {date_from} hasta {date_to}...")
+            
+            domain = [
+                ('move_id.move_type', 'in', ['out_invoice', 'out_refund']),
+                ('move_id.state', '=', 'posted'),
+                ('date', '>=', date_from),
+                ('date', '<=', date_to),
+                ('product_id.categ_id', 'not in', [315, 333, 304, 314, 318, 339]),
+                ('product_id.default_code', '!=', False),
+                ('product_id.commercial_line_national_id.name', 'not ilike', 'VENTA INTERNACIONAL'),
+                ('move_id.sales_channel_id.name', '=', 'NACIONAL')
+            ]
+            
+            # read_group por partner_id para obtener IDs únicos
+            res = self.models.execute_kw(
+                self.db, self.uid, self.password, 'account.move.line', 'read_group',
+                [domain, ['partner_id'], ['partner_id']],
+                {}
+            )
+            
+            count = len(res)
+            print(f"✅ Clientes únicos encontrados: {count}")
+            return count
+            
+        except Exception as e:
+            print(f"❌ Error contando clientes en Odoo: {e}")
+            return 0
+
+    def get_active_partners_by_channel(self, date_from, date_to):
+        """
+        Obtiene la cantidad de clientes únicos agrupados por su canal de ventas.
+        Específicamente para el cálculo de cobertura por canal.
+        """
+        try:
+            if not self.uid or not self.models:
+                return {}
+            
+            print(f"👥 Obteniendo distribución de clientes por canal desde {date_from} hasta {date_to}...")
+            
+            domain = [
+                ('move_id.move_type', 'in', ['out_invoice', 'out_refund']),
+                ('move_id.state', '=', 'posted'),
+                ('date', '>=', date_from),
+                ('date', '<=', date_to),
+                ('product_id.categ_id', 'not in', [315, 333, 304, 314, 318, 339]),
+                ('product_id.default_code', '!=', False),
+                ('product_id.commercial_line_national_id.name', 'not ilike', 'VENTA INTERNACIONAL'),
+                ('move_id.sales_channel_id.name', '=', 'NACIONAL')
+            ]
+            
+            # Agrupar por el ID del canal del partner
+            # Usamos res.partner para obtener el canal real del cliente
+            # Primero obtenemos los IDs de los partners que compraron
+            active_partner_ids_res = self.models.execute_kw(
+                self.db, self.uid, self.password, 'account.move.line', 'read_group',
+                [domain],
+                {'fields': ['partner_id'], 'groupby': ['partner_id'], 'lazy': False}
+            )
+            
+            partner_ids = [r['partner_id'][0] for r in active_partner_ids_res if r.get('partner_id')]
+            
+            if not partner_ids:
+                return {}
+            
+            # Ahora agrupamos esos partners por su sales_channel_id
+            res = self.models.execute_kw(
+                self.db, self.uid, self.password, 'res.partner', 'read_group',
+                [[('id', 'in', partner_ids)], ['sales_channel_id'], ['sales_channel_id']],
+                {'lazy': False}
+            )
+            
+            distribution = {}
+            for group in res:
+                channel_info = group.get('sales_channel_id')
+                channel_name = channel_info[1] if channel_info else 'Sin Canal'
+                # En Odoo 16, el conteo del grupo viene en la clave '__count'
+                distribution[channel_name] = group.get('__count', group.get('sales_channel_id_count', 0))
+            
+            print(f"✅ Canales obtenidos: {len(distribution)}")
+            return distribution
+            
+        except Exception as e:
+            print(f"❌ Error obteniendo distribución por canal en Odoo: {e}")
+            return {}
+
     def get_sales_lines(self, page=None, per_page=None, filters=None, date_from=None, date_to=None, partner_id=None, linea_id=None, search=None, limit=5000):
         """Obtener líneas de venta completas con todas las 27 columnas"""
         try:
@@ -349,12 +506,17 @@ class OdooManager:
             domain = [
                 ('move_id.move_type', 'in', ['out_invoice', 'out_refund']),
                 ('move_id.state', '=', 'posted'),
-                ('product_id.default_code', '!=', False)  # Solo productos con código
+                ('product_id.default_code', '!=', False),
+                ('product_id.commercial_line_national_id', '!=', False),
+                ('move_id.sales_channel_id.name', '=', 'NACIONAL')
             ]
             
             # Filtros de exclusión de categorías específicas
             excluded_categories = [315, 333, 304, 314, 318, 339]
             domain.append(('product_id.categ_id', 'not in', excluded_categories))
+            
+            # Filtro adicional para asegurar no jalar internacional por nombre de línea
+            domain.append(('product_id.commercial_line_national_id.name', 'not ilike', 'VENTA INTERNACIONAL'))
             
             # Filtros de fecha
             if date_from:

@@ -235,89 +235,6 @@ def index():
     # Redirigir la ruta raíz al dashboard
     return redirect(url_for('dashboard'))
 
-@app.route('/sales', methods=['GET', 'POST'])
-def sales():
-    if 'username' not in session:
-        return redirect(url_for('login'))
-    
-    # --- Verificación de Permisos ---
-    is_admin = session.get('username') in ADMIN_USERS
-    if not is_admin:
-        flash('No tienes permiso para acceder a esta página.', 'warning')
-        return redirect(url_for('dashboard'))
-    # --- Fin Verificación ---
-    
-    try:
-        # Obtener opciones de filtro
-        filter_options = data_manager.get_filter_options()
-        
-        if request.method == 'POST':
-            # For POST, get filters from the form
-            selected_filters = {
-                'date_from': request.form.get('date_from') or None,
-                'date_to': request.form.get('date_to') or None,
-                'search_term': request.form.get('search_term') or None
-            }
-        else:
-            # For GET, start with no filters, so defaults will be used
-            selected_filters = {
-                'date_from': request.args.get('date_from') or None,
-                'date_to': request.args.get('date_to') or None,
-                'search_term': request.args.get('search_term') or None
-            }
-
-        # Create a clean copy for the database query
-        query_filters = selected_filters.copy()
-
-        # Clean up filter values for the query
-        for key, value in query_filters.items():
-            if not value:  # Handles empty strings and None
-                query_filters[key] = None
-        
-        # Fetch data on every page load (GET and POST)
-        # On GET, filters are None, so odoo_manager will use defaults (last 30 days)
-        sales_data = data_manager.get_sales_lines(
-            date_from=query_filters.get('date_from'),
-            date_to=query_filters.get('date_to'),
-            partner_id=None,
-            search=query_filters.get('search_term'),
-            linea_id=None,
-            limit=1000
-        )
-        
-        # Filtrar VENTA INTERNACIONAL (exportaciones)
-        sales_data_filtered = []
-        for sale in sales_data:
-            linea_comercial = sale.get('commercial_line_national_id')
-            if linea_comercial and isinstance(linea_comercial, list) and len(linea_comercial) > 1:
-                nombre_linea = linea_comercial[1].upper()
-                if 'VENTA INTERNACIONAL' in nombre_linea:
-                    continue
-            
-            # También filtrar por canal de ventas
-            canal_ventas = sale.get('sales_channel_id')
-            if canal_ventas and isinstance(canal_ventas, list) and len(canal_ventas) > 1:
-                nombre_canal = canal_ventas[1].upper()
-                if 'VENTA INTERNACIONAL' in nombre_canal or 'INTERNACIONAL' in nombre_canal:
-                    continue
-            
-            sales_data_filtered.append(sale)
-        
-        return render_template('sales.html', 
-                             sales_data=sales_data_filtered,
-                             filter_options=filter_options,
-                             selected_filters=selected_filters,
-                             fecha_actual=datetime.now(),
-                             is_admin=is_admin) # Pasar el flag a la plantilla
-    
-    except Exception as e:
-        flash(f'Error al obtener datos: {str(e)}', 'danger')
-        return render_template('sales.html', 
-                             sales_data=[],
-                             filter_options={'lineas': [], 'clientes': []},
-                             selected_filters={},
-                             fecha_actual=datetime.now(),
-                             is_admin=is_admin) # Pasar el flag a la plantilla
 
 @app.route('/dashboard', methods=['GET', 'POST'])
 def dashboard():
@@ -448,11 +365,14 @@ def dashboard():
             # Las fechas de inicio y fin ahora se calculan más arriba
             
             # Obtener datos de ventas reales desde Odoo
+            # Solo traer ventas estrictamente del mes seleccionado, respetando filtros
             sales_data = data_manager.get_sales_lines(
                 date_from=fecha_inicio,
                 date_to=fecha_fin,
                 limit=SALES_LIMIT
             )
+            # Filtrar por mes exacto en caso de que Odoo devuelva líneas fuera del rango
+            sales_data = [s for s in sales_data if s.get('invoice_date', '').startswith(f'{año_sel}-{mes_sel}')]  # YYYY-MM
             
             print(f"📊 Obtenidas {len(sales_data)} líneas de ventas para el dashboard")
             
@@ -463,18 +383,12 @@ def dashboard():
                 ultimo_dia_mes_sel = calendar.monthrange(int(año_sel), int(mes_sel))[1]
                 fecha_fin_mes_sel = f"{int(año_sel):04d}-{int(mes_sel):02d}-{ultimo_dia_mes_sel:02d}"
                 
-                sales_historico = data_manager.get_sales_lines(
+                # OPTIMIZACIÓN: Usar read_group para contar clientes únicos sin descargar todas las líneas
+                total_clientes = data_manager.get_active_partners_count(
                     date_from=fecha_inicio_ano,
-                    date_to=fecha_fin_mes_sel,
-                    limit=20000
+                    date_to=fecha_fin_mes_sel
                 )
-                clientes_historicos = set()
-                for sale in sales_historico:
-                    partner_name = sale.get('partner_name', '').strip()
-                    if partner_name:
-                        clientes_historicos.add(partner_name)
                 
-                total_clientes = len(clientes_historicos)
                 print(f"👥 Total de clientes en cartera activa (año {año_actual}): {total_clientes}")
             except Exception as e:
                 print(f"⚠️ Error obteniendo cartera de clientes: {e}")
@@ -583,118 +497,58 @@ def dashboard():
         clientes_con_canal = {}  # {partner_id: nombre_canal}
         
         # Obtener IDs únicos de clientes
-        partner_ids = set()
-        for sale in sales_data:
-            partner_info = sale.get('partner_id')
-            if partner_info and isinstance(partner_info, list):
-                partner_ids.add(partner_info[0])
+        # --- CÁLCULO DE COBERTURA DE CLIENTES ---
+        print("🔍 Calculando cobertura de clientes por canal...")
         
-        for sale in sales_historico:
-            partner_info = sale.get('partner_id')
-            if partner_info and isinstance(partner_info, list):
-                partner_ids.add(partner_info[0])
+        # 1. Obtener distribución de TODA la cartera histórica por canal (año completo)
+        fecha_inicio_ano = datetime(año_actual, 1, 1).strftime('%Y-%m-%d')
+        # ultimo_dia_mes_sel y fecha_fin_mes_sel ya están definidos arriba
+        cartera_por_canal = data_manager.get_active_partners_by_channel(fecha_inicio_ano, fecha_fin_mes_sel)
         
-        # Obtener información de canales de los clientes
-        if partner_ids:
-            try:
-                partners_data = data_manager.models.execute_kw(
-                    data_manager.db, data_manager.uid, data_manager.password,
-                    'res.partner', 'read',
-                    [list(partner_ids)],
-                    {'fields': ['id', 'name', 'sales_channel_id']}
-                )
-                
-                for partner in partners_data:
-                    partner_id = partner['id']
-                    canal_info = partner.get('sales_channel_id')
-                    if canal_info and isinstance(canal_info, list) and len(canal_info) > 1:
-                        clientes_con_canal[partner_id] = canal_info[1].strip()
-                
-                print(f"✅ Obtenidos canales de {len(clientes_con_canal)} clientes")
-            except Exception as e:
-                print(f"⚠️ Error obteniendo canales de clientes: {e}")
+        # 2. Obtener distribución de clientes ACTIVOS en el periodo seleccionado
+        activos_por_canal = data_manager.get_active_partners_by_channel(fecha_inicio, fecha_fin)
         
-        # Contar clientes activos únicos en el periodo
-        clientes_activos = set()
-        clientes_por_canal = {}  # Diccionario para rastrear clientes únicos por canal
-        clientes_historicos_por_canal = {}  # Cartera total por canal
-        
-        for sale in sales_data:
-            partner_info = sale.get('partner_id')
-            if not partner_info or not isinstance(partner_info, list):
-                continue
-                
-            partner_id = partner_info[0]
-            partner_name = partner_info[1] if len(partner_info) > 1 else str(partner_id)
-            
-            # Obtener canal del cliente (no de la transacción)
-            nombre_canal = clientes_con_canal.get(partner_id, 'Sin Canal')
-            
-            # Excluir VENTA INTERNACIONAL
-            if 'INTERNACIONAL' in nombre_canal.upper():
-                continue
-            
-            clientes_activos.add(partner_name)
-            
-            if nombre_canal not in clientes_por_canal:
-                clientes_por_canal[nombre_canal] = set()
-            clientes_por_canal[nombre_canal].add(partner_name)
-        
-        # Obtener cartera histórica por canal
-        for sale in sales_historico:
-            partner_info = sale.get('partner_id')
-            if not partner_info or not isinstance(partner_info, list):
-                continue
-                
-            partner_id = partner_info[0]
-            partner_name = partner_info[1] if len(partner_info) > 1 else str(partner_id)
-            
-            # Obtener canal del cliente (no de la transacción)
-            nombre_canal = clientes_con_canal.get(partner_id, 'Sin Canal')
-            
-            # Excluir VENTA INTERNACIONAL
-            if 'INTERNACIONAL' in nombre_canal.upper():
-                continue
-            
-            if nombre_canal not in clientes_historicos_por_canal:
-                clientes_historicos_por_canal[nombre_canal] = set()
-            clientes_historicos_por_canal[nombre_canal].add(partner_name)
-        
-        num_clientes_activos = len(clientes_activos)
-        cobertura_clientes = (num_clientes_activos / total_clientes * 100) if total_clientes > 0 else 0
-        print(f"📊 Cobertura de clientes: {num_clientes_activos} activos de {total_clientes} totales = {cobertura_clientes:.1f}%")
-        
-        # Crear tabla de cobertura por canal (desde res.partner.sales_channel_id)
+        # 3. Construir tabla de cobertura
         datos_cobertura_canal = []
+        todas_las_llaves_canal = sorted(list(set(cartera_por_canal.keys()) | set(activos_por_canal.keys())))
+        
         total_cartera_todos = 0
         total_activos_todos = 0
         
-        for canal in sorted(clientes_historicos_por_canal.keys()):
-            cartera_canal = len(clientes_historicos_por_canal[canal])
-            activos_canal = len(clientes_por_canal.get(canal, set()))
-            cobertura_canal = (activos_canal / cartera_canal * 100) if cartera_canal > 0 else 0
+        for canal in todas_las_llaves_canal:
+            # Excluir canales internacionales
+            if 'INTERNACIONAL' in canal.upper():
+                continue
+                
+            cartera = cartera_por_canal.get(canal, 0)
+            activos = activos_por_canal.get(canal, 0)
+            cobertura = (activos / cartera * 100) if cartera > 0 else 0
             
             datos_cobertura_canal.append({
                 'canal': canal,
-                'cartera': cartera_canal,
-                'activos': activos_canal,
-                'cobertura': cobertura_canal
+                'cartera': cartera,
+                'activos': activos,
+                'cobertura': cobertura
             })
             
-            total_cartera_todos += cartera_canal
-            total_activos_todos += activos_canal
+            total_cartera_todos += cartera
+            total_activos_todos += activos
+            
+        # 4. Calcular totales generales y métricas globales
+        num_clientes_activos = total_activos_todos
+        # Note: total_clientes ya fue calculado arriba por get_active_partners_count
+        cobertura_clientes = (num_clientes_activos / total_clientes * 100) if total_clientes > 0 else 0
         
-        # Agregar fila de totales
-        cobertura_total = (total_activos_todos / total_cartera_todos * 100) if total_cartera_todos > 0 else 0
+        # Agregar fila de totales a la tabla
         datos_cobertura_canal.append({
             'canal': 'TOTAL GENERAL',
             'cartera': total_cartera_todos,
             'activos': total_activos_todos,
-            'cobertura': cobertura_total,
+            'cobertura': (total_activos_todos / total_cartera_todos * 100) if total_cartera_todos > 0 else 0,
             'es_total': True
         })
         
-        print(f"📊 Cobertura por canal (res.partner.sales_channel_id): {len(datos_cobertura_canal)-1} canales procesados")
+        print(f"📊 Cobertura global: {num_clientes_activos} activos de {total_clientes} totales = {cobertura_clientes:.1f}%")
 
         # --- CÁLCULO DE FRECUENCIA DE COMPRA POR LÍNEA COMERCIAL ---
         # Usa la misma agrupación que "Análisis de Clientes por Línea Comercial"
@@ -928,46 +782,17 @@ def dashboard():
         print(f"📈 Generando tendencia histórica de ventas...")
         
         tendencia_12_meses = []
-        # Usar fecha actual, no el mes seleccionado (independiente del filtro)
         fecha_base = datetime.now()
         
-        # Obtener datos de TODO el año actual (enero a diciembre del año actual)
-        año_actual_tendencia = fecha_base.year
-        fecha_inicio_año_actual = f"{año_actual_tendencia}-01-01"
-        fecha_fin_año_actual = f"{año_actual_tendencia}-12-31"
+        # Calcular el rango de 12 meses (desde hace 11 meses hasta el actual)
+        fecha_inicio_tendencia = (fecha_base - timedelta(days=365)).replace(day=1).strftime('%Y-%m-%d')
+        fecha_fin_tendencia = fecha_base.strftime('%Y-%m-%d')
         
-        try:
-            sales_año_actual_completo = data_manager.get_sales_lines(
-                date_from=fecha_inicio_año_actual,
-                date_to=fecha_fin_año_actual,
-                limit=50000  # Aumentar límite para obtener todo el año
-            )
-            print(f"📊 Obtenidas {len(sales_año_actual_completo)} líneas del año actual completo")
-        except:
-            sales_año_actual_completo = []
-            print(f"⚠️ Error obteniendo datos del año actual")
+        # Obtener el resumen mensual directamente de Odoo (MUCHO más rápido y eficiente)
+        resumen_mensual = data_manager.get_sales_summary_by_month(fecha_inicio_tendencia, fecha_fin_tendencia)
         
-        # Si necesitamos datos de meses del año anterior (ej: si estamos en enero)
-        año_anterior = fecha_base.year - 1
-        fecha_inicio_año_anterior = f"{año_anterior}-01-01"
-        fecha_fin_año_anterior = f"{año_anterior}-12-31"
-        
-        try:
-            sales_año_anterior = data_manager.get_sales_lines(
-                date_from=fecha_inicio_año_anterior,
-                date_to=fecha_fin_año_anterior,
-                limit=50000
-            )
-            print(f"📊 Obtenidas {len(sales_año_anterior)} líneas del año anterior")
-        except:
-            sales_año_anterior = []
-        
-        # Combinar datos del año actual y anterior
-        sales_data_12_meses = sales_año_actual_completo + sales_año_anterior
-        print(f"📊 Total de {len(sales_data_12_meses)} líneas para análisis de tendencia histórica")
-        
-        for i in range(11, -1, -1):  # Últimos 12 meses incluyendo el actual
-            # Calcular mes y año correctamente
+        # Procesar los últimos 12 meses
+        for i in range(11, -1, -1):
             meses_atras = i
             if fecha_base.month - meses_atras > 0:
                 mes_num = fecha_base.month - meses_atras
@@ -976,50 +801,48 @@ def dashboard():
                 mes_num = 12 + (fecha_base.month - meses_atras)
                 año_mes = fecha_base.year - 1
             
-            cache_key = f"{año_mes}-{mes_num:02d}"
             fecha_mes = datetime(año_mes, mes_num, 1)
+            mes_key = f"{año_mes}-{mes_num:02d}"
             
-            # Intentar obtener del caché o calcular
+            # Intentar obtener del caché primero (para meses pasados)
             cached = get_cached_data(año_mes, mes_num)
             if cached and 'kpis' in cached:
                 venta_mes = cached['kpis'].get('venta_total', 0)
                 meta_mes = cached['kpis'].get('meta_total', 0)
             else:
-                # Calcular desde sales_data_12_meses
-                venta_mes = 0
-                for sale in sales_data_12_meses:
-                    invoice_date = sale.get('invoice_date')
-                    if invoice_date:
-                        if isinstance(invoice_date, str):
-                            try:
-                                fecha_venta = dt.strptime(invoice_date, '%Y-%m-%d')
-                            except:
-                                continue
-                        else:
-                            fecha_venta = invoice_date
-                        
-                        # Filtrar por líneas nacionales (excluir internacional)
-                        linea_comercial = sale.get('commercial_line_national_id')
-                        if linea_comercial and isinstance(linea_comercial, list) and len(linea_comercial) > 1:
-                            if 'VENTA INTERNACIONAL' in linea_comercial[1].upper():
-                                continue
-                        
-                        if fecha_venta.year == año_mes and fecha_venta.month == mes_num:
-                            balance = sale.get('balance', 0)
-                            if isinstance(balance, str):
-                                balance = float(balance.replace(',', ''))
-                            venta_mes += balance
+                # Si no hay caché, usar el resumen de Odoo
+                # Mapeo de meses en español para asegurar coincidencia con Odoo
+                meses_es = {
+                    1: 'enero', 2: 'febrero', 3: 'marzo', 4: 'abril', 5: 'mayo', 6: 'junio',
+                    7: 'julio', 8: 'agosto', 9: 'septiembre', 10: 'octubre', 11: 'noviembre', 12: 'diciembre'
+                }
                 
-                # Obtener meta de Google Sheets para ese mes
+                # Intentar varios formatos de búsqueda (case-insensitive)
+                venta_mes = 0
+                label_busqueda_es = f"{meses_es[mes_num]} {año_mes}"
+                label_busqueda_en = fecha_mes.strftime('%B %Y').lower()
+                
+                # Buscar en el resumen (normalizado a minúsculas)
+                for key, val in resumen_mensual.items():
+                    key_lower = key.lower()
+                    if label_busqueda_es == key_lower or label_busqueda_en == key_lower:
+                        venta_mes = val
+                        break
+                    # Fallback por si hay texto extra (ej. "enero de 2025")
+                    if meses_es[mes_num] in key_lower and str(año_mes) in key_lower:
+                        venta_mes = val
+                        break
+                
+                # Obtener meta de Google Sheets
                 try:
                     meta_key = f"{año_mes}-{mes_num:02d}"
-                    metas_mes = metas_historicas.get(meta_key, {}).get('metas', {})
-                    meta_mes = sum(metas_mes.values())
+                    metas_mes_data = metas_historicas.get(meta_key, {}).get('metas', {})
+                    meta_mes = sum(metas_mes_data.values())
                 except:
                     meta_mes = 0
             
             tendencia_12_meses.append({
-                'mes': cache_key,
+                'mes': mes_key,
                 'mes_nombre': fecha_mes.strftime('%b %Y'),
                 'venta': venta_mes,
                 'meta': meta_mes,
@@ -1987,82 +1810,7 @@ def meta():
     flash('Esta funcionalidad no está disponible en este proyecto.', 'warning')
     return redirect(url_for('dashboard'))
 
-@app.route('/export/excel/sales')
-def export_excel_sales():
-    if 'username' not in session:
-        return redirect(url_for('login'))
-    
-    try:
-        # Obtener filtros de la URL
-        date_from = request.args.get('date_from')
-        date_to = request.args.get('date_to')
-        linea_id = request.args.get('linea_id')
-        partner_id = request.args.get('partner_id')
-        
-        # Convertir a tipos apropiados
-        if linea_id:
-            try:
-                linea_id = int(linea_id)
-            except (ValueError, TypeError):
-                linea_id = None
-        
-        if partner_id:
-            try:
-                partner_id = int(partner_id)
-            except (ValueError, TypeError):
-                partner_id = None
-        
-        # Obtener datos
-        sales_data = data_manager.get_sales_lines(
-            date_from=date_from,
-            date_to=date_to,
-            partner_id=partner_id,
-            linea_id=linea_id,
-            limit=10000  # Más datos para export
-        )
-        
-        # Filtrar VENTA INTERNACIONAL (exportaciones)
-        sales_data_filtered = []
-        for sale in sales_data:
-            linea_comercial = sale.get('commercial_line_national_id')
-            if linea_comercial and isinstance(linea_comercial, list) and len(linea_comercial) > 1:
-                nombre_linea = linea_comercial[1].upper()
-                if 'VENTA INTERNACIONAL' in nombre_linea:
-                    continue
-            
-            # También filtrar por canal de ventas
-            canal_ventas = sale.get('sales_channel_id')
-            if canal_ventas and isinstance(canal_ventas, list) and len(canal_ventas) > 1:
-                nombre_canal = canal_ventas[1].upper()
-                if 'VENTA INTERNACIONAL' in nombre_canal or 'INTERNACIONAL' in nombre_canal:
-                    continue
-            
-            sales_data_filtered.append(sale)
-        
-        # Crear DataFrame
-        df = pd.DataFrame(sales_data_filtered)
-        
-        # Crear archivo Excel en memoria
-        output = io.BytesIO()
-        with pd.ExcelWriter(output, engine='openpyxl') as writer:
-            df.to_excel(writer, sheet_name='Ventas', index=False)
-        
-        output.seek(0)
-        
-        # Generar nombre de archivo con timestamp
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        filename = f'ventas_farmaceuticas_{timestamp}.xlsx'
-        
-        return send_file(
-            output,
-            as_attachment=True,
-            download_name=filename,
-            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
-        )
-        
-    except Exception as e:
-        flash(f'Error al exportar datos: {str(e)}', 'danger')
-        return redirect(url_for('sales'))
+
 
 # FUNCIONALIDAD DESHABILITADA - Las plantillas meta.html y metas_vendedor.html no existen
 # Esta función fue comentada porque el proyecto clonado solo necesita la conexión a Odoo y ventas

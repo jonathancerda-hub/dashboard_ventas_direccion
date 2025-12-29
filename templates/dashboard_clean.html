@@ -34,9 +34,6 @@
             </option>
             {% endfor %}
         </select>
-        {% if is_admin %}
-        <a href="{{ url_for('sales') }}" class="btn-nav"><i class="bi bi-table"></i> Ventas</a>
-        {% endif %}
         <a href="{{ url_for('logout') }}" class="btn-salir"><i class="bi bi-box-arrow-right"></i> Salir</a>
     </div>
 </div>
@@ -1567,15 +1564,15 @@
 
                 // 1. Variables Globales de Datos (Inyectadas por Jinja2)
                 const globalData = {
-                    lineas: {{ datos_lineas|default ([]) | tojson | safe }},
-                productos: {{ datos_productos |default ([]) | tojson | safe }},
-                cicloVida: {{ datos_ciclo_vida |default ([]) | tojson | safe }},
-                frecuencia: {{ datos_frecuencia_linea |default ([]) | tojson | safe }},
-                tendencia: {{ tendencia_12_meses |default ([]) | tojson | safe }},
-                rfm: {{ segmentos_rfm |default ({}) | tojson | safe }},
-                heatmap: {{ heatmap_ventas |default ([]) | tojson | safe }},
-                mapa: {{ mapa_ventas_data |default ([]) | tojson | safe }},
-                mes: '{{ mes_seleccionado }}',
+                    lineas: {{ datos_lineas|default([])|tojson|safe }},
+                    productos: {{ datos_productos|default([])|tojson|safe }},
+                    cicloVida: {{ datos_ciclo_vida|default([])|tojson|safe }},
+                    frecuencia: {{ datos_frecuencia_linea|default([])|tojson|safe }},
+                    tendencia: {{ tendencia_12_meses|default([])|tojson|safe }},
+                    rfm: {{ segmentos_rfm|default({})|tojson|safe }},
+                    heatmap: {{ heatmap_ventas|default([])|tojson|safe }},
+                    mapa: {{ mapa_ventas_data|default([])|tojson|safe }},
+                    mes: '{{ mes_seleccionado }}',
                     dia: '{{ dia_actual }}'
                 };
 
@@ -1587,9 +1584,9 @@
                     const myChart = echarts.init(chartDom);
                     const filtered = globalData.frecuencia.filter(d => !d.es_total).sort((a, b) => b.frecuencia - a.frecuencia);
                     myChart.setOption({
-                        tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' }},
+                        tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
                         grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
-                        xAxis: { type: 'category', data: filtered.map(d => d.linea), axisLabel: { rotate: 45, interval: 0 }},
+                        xAxis: { type: 'category', data: filtered.map(d => d.linea), axisLabel: { rotate: 45, interval: 0 } },
                         yAxis: { type: 'value' },
                         series: [{
                             type: 'bar', barWidth: '60%',
@@ -1654,11 +1651,11 @@
                     const ctx = canvas.getContext('2d');
                     const orden = ['Campeones', 'Leales', 'Potenciales', 'Nuevos', 'En Riesgo', 'Hibernando', 'Perdidos', 'Otros'];
                     const labels = [], counts = [], colores = [];
-                    orden.forEach(s => { if (globalData.rfm[s]) { labels.push(s); counts.push(globalData.rfm[s].count); colores.push(globalData.rfm[s].color); }});
+                    orden.forEach(s => { if (globalData.rfm[s]) { labels.push(s); counts.push(globalData.rfm[s].count); colores.push(globalData.rfm[s].color); } });
                     new Chart(ctx, {
                         type: 'doughnut',
                         data: { labels: labels, datasets: [{ data: counts, backgroundColor: colores, borderColor: '#fff', borderWidth: 3 }] },
-                        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' }} }
+                        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
                     });
                 }
 
