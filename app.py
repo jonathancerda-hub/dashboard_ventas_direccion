@@ -289,49 +289,6 @@ def dashboard():
         # --- FIN DE LA NUEVA LÓGICA ---
 
 
-        # Intentar obtener datos del caché
-        cached_result = get_cached_data(año_sel_int, mes_sel_int)
-        if cached_result:
-            print(f"🚀 Cargando datos desde caché para {mes_seleccionado} (carga instantánea)")
-            # Agregar datos que no se cachean (sesión del usuario, etc.)
-            cached_result['is_admin'] = is_admin
-            cached_result['meses_disponibles'] = meses_disponibles
-            cached_result['mes_seleccionado'] = mes_seleccionado
-            cached_result['mes_nombre'] = mes_nombre
-            cached_result['desde_cache'] = True  # Indicador para el template
-            return render_template('dashboard_clean.html', **cached_result)
-
-        # Si NO es el mes actual y no hay caché, mostrar mensaje y no intentar recalcular
-        if not is_current_month(año_sel_int, mes_sel_int):
-            flash('Los datos de este mes aún no están disponibles. Por favor, contacta al administrador para que genere el caché o espera unos minutos.', 'warning')
-            return render_template('dashboard_clean.html',
-                                 meses_disponibles=meses_disponibles,
-                                 mes_seleccionado=mes_seleccionado,
-                                 mes_nombre=mes_nombre,
-                                 dia_actual=fecha_actual.day,
-                                 kpis={},
-                                 datos_lineas=[],
-                                 datos_lineas_tabla=[],
-                                 datos_clientes_por_linea=[],
-                                 datos_cobertura_canal=[],
-                                 datos_frecuencia_linea=[],
-                                 clientes_rfm=[],
-                                 segmentos_rfm={},
-                                 tendencia_12_meses=[],
-                                 clientes_riesgo=[],
-                                 heatmap_ventas=[],
-                                 heatmap_dias=['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'],
-                                 heatmap_semanas=['Semana 1', 'Semana 2', 'Semana 3', 'Semana 4', 'Semana 5'],
-                                 datos_productos=[],
-                                 datos_ciclo_vida=[],
-                                 fecha_actual=fecha_actual,
-                                 avance_lineal_pct=0,
-                                 faltante_meta=0,
-                                 datos_ecommerce=[],
-                                 kpis_ecommerce={},
-                                 is_admin=is_admin,
-                                 desde_cache=False)
-
         # Si es el mes actual, obtener datos frescos
         print(f"🔄 Mes actual ({mes_seleccionado}): Obteniendo datos actualizados desde Odoo...")
 
@@ -778,20 +735,14 @@ def dashboard():
         
         print(f"📊 Análisis RFM: {len(clientes_rfm)} clientes segmentados en {len(segmentos_rfm)} categorías")
         
-        # --- TENDENCIA HISTÓRICA (ÚLTIMOS 12 MESES) ---
-        print(f"📈 Generando tendencia histórica de ventas...")
-        
+
+        # --- TENDENCIA HISTÓRICA (ÚLTIMOS 12 MESES) - SIEMPRE ANUAL ---
+        print(f"📈 Generando tendencia histórica de ventas (últimos 12 meses, independiente del mes seleccionado)...")
         tendencia_12_meses = []
         fecha_base = datetime.now()
-        
-        # Calcular el rango de 12 meses (desde hace 11 meses hasta el actual)
         fecha_inicio_tendencia = (fecha_base - timedelta(days=365)).replace(day=1).strftime('%Y-%m-%d')
         fecha_fin_tendencia = fecha_base.strftime('%Y-%m-%d')
-        
-        # Obtener el resumen mensual directamente de Odoo (MUCHO más rápido y eficiente)
         resumen_mensual = data_manager.get_sales_summary_by_month(fecha_inicio_tendencia, fecha_fin_tendencia)
-        
-        # Procesar los últimos 12 meses
         for i in range(11, -1, -1):
             meses_atras = i
             if fecha_base.month - meses_atras > 0:
@@ -800,47 +751,29 @@ def dashboard():
             else:
                 mes_num = 12 + (fecha_base.month - meses_atras)
                 año_mes = fecha_base.year - 1
-            
             fecha_mes = datetime(año_mes, mes_num, 1)
             mes_key = f"{año_mes}-{mes_num:02d}"
-            
-            # Intentar obtener del caché primero (para meses pasados)
-            cached = get_cached_data(año_mes, mes_num)
-            if cached and 'kpis' in cached:
-                venta_mes = cached['kpis'].get('venta_total', 0)
-                meta_mes = cached['kpis'].get('meta_total', 0)
-            else:
-                # Si no hay caché, usar el resumen de Odoo
-                # Mapeo de meses en español para asegurar coincidencia con Odoo
-                meses_es = {
-                    1: 'enero', 2: 'febrero', 3: 'marzo', 4: 'abril', 5: 'mayo', 6: 'junio',
-                    7: 'julio', 8: 'agosto', 9: 'septiembre', 10: 'octubre', 11: 'noviembre', 12: 'diciembre'
-                }
-                
-                # Intentar varios formatos de búsqueda (case-insensitive)
-                venta_mes = 0
-                label_busqueda_es = f"{meses_es[mes_num]} {año_mes}"
-                label_busqueda_en = fecha_mes.strftime('%B %Y').lower()
-                
-                # Buscar en el resumen (normalizado a minúsculas)
-                for key, val in resumen_mensual.items():
-                    key_lower = key.lower()
-                    if label_busqueda_es == key_lower or label_busqueda_en == key_lower:
-                        venta_mes = val
-                        break
-                    # Fallback por si hay texto extra (ej. "enero de 2025")
-                    if meses_es[mes_num] in key_lower and str(año_mes) in key_lower:
-                        venta_mes = val
-                        break
-                
-                # Obtener meta de Google Sheets
-                try:
-                    meta_key = f"{año_mes}-{mes_num:02d}"
-                    metas_mes_data = metas_historicas.get(meta_key, {}).get('metas', {})
-                    meta_mes = sum(metas_mes_data.values())
-                except:
-                    meta_mes = 0
-            
+            meses_es = {
+                1: 'enero', 2: 'febrero', 3: 'marzo', 4: 'abril', 5: 'mayo', 6: 'junio',
+                7: 'julio', 8: 'agosto', 9: 'septiembre', 10: 'octubre', 11: 'noviembre', 12: 'diciembre'
+            }
+            venta_mes = 0
+            label_busqueda_es = f"{meses_es[mes_num]} {año_mes}"
+            label_busqueda_en = fecha_mes.strftime('%B %Y').lower()
+            for key, val in resumen_mensual.items():
+                key_lower = key.lower()
+                if label_busqueda_es == key_lower or label_busqueda_en == key_lower:
+                    venta_mes = val
+                    break
+                if meses_es[mes_num] in key_lower and str(año_mes) in key_lower:
+                    venta_mes = val
+                    break
+            try:
+                meta_key = f"{año_mes}-{mes_num:02d}"
+                metas_mes_data = metas_historicas.get(meta_key, {}).get('metas', {})
+                meta_mes = sum(metas_mes_data.values())
+            except:
+                meta_mes = 0
             tendencia_12_meses.append({
                 'mes': mes_key,
                 'mes_nombre': fecha_mes.strftime('%b %Y'),
@@ -848,7 +781,6 @@ def dashboard():
                 'meta': meta_mes,
                 'cumplimiento': (venta_mes / meta_mes * 100) if meta_mes > 0 else 0
             })
-        
         print(f"📊 Tendencia histórica: {len(tendencia_12_meses)} meses procesados")
         
         # --- HEATMAP DE ACTIVIDAD DE VENTAS ---

@@ -478,6 +478,7 @@
                 <div class="grafico-container" style="margin-top: 30px;">
                     <div class="tabla-header">
                         <h3>📈 Tendencia Histórica de Ventas (12 Meses)</h3>
+                        <span style="font-size:13px; color:#1890ff; font-weight:500; margin-left:10px;">(Siempre anual, no depende del filtro de mes)</span>
                     </div>
 
                     <div style="margin-top: 20px; position: relative;">
@@ -500,7 +501,8 @@
                                 <strong>Evolución mensual</strong> de ventas vs metas para identificar patrones,
                                 estacionalidad y cumplimiento sostenido.
                                 Las áreas sombreadas indican períodos de sobre-cumplimiento (verde) o bajo-cumplimiento
-                                (rojo) de metas.
+                                (rojo) de metas.<br>
+                                <span style="color:#1890ff; font-weight:500;">Este gráfico SIEMPRE muestra los últimos 12 meses, sin importar el mes seleccionado arriba.</span>
                             </div>
                         </div>
                     </div>
@@ -1563,15 +1565,16 @@
             <script>
 
                 // 1. Variables Globales de Datos (Inyectadas por Jinja2)
+                // NOTA: tendencia y mapa son SIEMPRE ANUALES, no dependen del filtro de mes
                 const globalData = {
                     lineas: {{ datos_lineas|default([])|tojson|safe }},
                     productos: {{ datos_productos|default([])|tojson|safe }},
                     cicloVida: {{ datos_ciclo_vida|default([])|tojson|safe }},
                     frecuencia: {{ datos_frecuencia_linea|default([])|tojson|safe }},
-                    tendencia: {{ tendencia_12_meses|default([])|tojson|safe }},
+                    tendencia: {{ tendencia_12_meses|default([])|tojson|safe }}, // ANUAL
                     rfm: {{ segmentos_rfm|default({})|tojson|safe }},
                     heatmap: {{ heatmap_ventas|default([])|tojson|safe }},
-                    mapa: {{ mapa_ventas_data|default([])|tojson|safe }},
+                    mapa: {{ mapa_ventas_data|default([])|tojson|safe }},      // ANUAL
                     mes: '{{ mes_seleccionado }}',
                     dia: '{{ dia_actual }}'
                 };
