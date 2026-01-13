@@ -876,6 +876,10 @@ class OdooManager:
             print(f"✅ Procesadas {len(sales_lines)} líneas con 27 columnas completas")
             print(f"🔄 Reasignadas {ecommerce_reassigned} líneas a ECOMMERCE (usuarios específicos)")
             
+            # Debug: Verificar si las líneas tienen state_id
+            lines_with_state = sum(1 for line in sales_lines if line.get('state_id'))
+            print(f"🗺️ Líneas con state_id para mapa: {lines_with_state}/{len(sales_lines)}")
+            
             # Si se solicita paginación, devolver tupla (datos, paginación)
             if page is not None and per_page is not None:
                 # Calcular paginación
