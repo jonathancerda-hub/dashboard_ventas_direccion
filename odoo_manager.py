@@ -814,7 +814,7 @@ class OdooManager:
                         'origin_number': move.get('origin_number'),
                         
                         # 15. Saldo
-                        'balance': -line.get('balance', 0) if line.get('balance') is not None else 0,
+                        'balance': -float(line.get('balance', 0)) if line.get('balance') is not None else 0,
                         
                         # 16. Clasificación Farmacológica
                         'pharmacological_classification_id': product.get('pharmacological_classification_id'),
@@ -844,10 +844,10 @@ class OdooManager:
                         'production_line_id': product.get('production_line_id'),
                         
                         # 23. Cantidad
-                        'quantity': line.get('quantity'),
+                        'quantity': float(line.get('quantity', 0)) if line.get('quantity') is not None else 0,
                         
                         # 24. Precio Unitario
-                        'price_unit': line.get('price_unit'),
+                        'price_unit': float(line.get('price_unit', 0)) if line.get('price_unit') is not None else 0,
                         
                         # 25. Dirección Entrega
                         'partner_shipping_id': order.get('partner_shipping_id'),
