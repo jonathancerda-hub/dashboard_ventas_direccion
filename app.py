@@ -1,6 +1,6 @@
 # app.py - Dashboard de Ventas Farmacéuticas
 
-from flask import Flask, render_template, request, redirect, url_for, flash, session, send_file
+from flask import Flask, render_template, request, redirect, url_for, flash, session, send_file, jsonify
 from dotenv import load_dotenv
 from odoo_manager import OdooManager
 from google_sheets_manager import GoogleSheetsManager
@@ -298,7 +298,7 @@ def api_tendencia():
             resumen_mensual = data_manager.get_sales_summary_by_month(fecha_inicio, fecha_fin)
         
         # Obtener metas del año
-        metas_historicas = google_sheets_manager.get_metas_historicas()
+        metas_historicas = gs_manager.get_metas_historicas()
         
         # Construir array de 12 meses
         tendencia = []
