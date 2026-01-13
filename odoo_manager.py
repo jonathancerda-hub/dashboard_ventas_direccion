@@ -526,6 +526,12 @@ class OdooManager:
         try:
             print(f"🔍 Obteniendo líneas de venta completas...")
             
+            # Convertir page y per_page a int si vienen como string
+            if page is not None:
+                page = int(page)
+            if per_page is not None:
+                per_page = int(per_page)
+            
             # Verificar conexión
             if not self.uid or not self.models:
                 print("❌ No hay conexión a Odoo disponible")
