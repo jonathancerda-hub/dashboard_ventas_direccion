@@ -902,6 +902,8 @@ class OdooManager:
             
         except Exception as e:
             print(f"Error al obtener las líneas de venta de Odoo: {e}")
+            import traceback
+            traceback.print_exc()
             # Devolver formato apropiado según si se solicitó paginación
             if page is not None and per_page is not None:
                 return [], {'page': page, 'per_page': per_page, 'total': 0, 'pages': 0}
