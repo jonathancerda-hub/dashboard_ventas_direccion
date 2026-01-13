@@ -19,6 +19,17 @@ import pickle
 load_dotenv(override=True)
 app = Flask(__name__)
 
+# --- Configuración de Supabase (Datos Históricos) ---
+try:
+    from supabase_manager import SupabaseManager
+    supabase_manager = SupabaseManager()
+    SUPABASE_ENABLED = True
+    print("✅ Supabase habilitado para datos históricos")
+except Exception as e:
+    SUPABASE_ENABLED = False
+    print(f"⚠️ Supabase no disponible: {e}")
+    print("   Continuando con Odoo únicamente...")
+
 # --- Configuración de la Clave Secreta ---
 app.secret_key = os.getenv("SECRET_KEY")
 if not app.secret_key:
@@ -37,6 +48,7 @@ app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 # --- Sistema de Caché para Datos de Meses ---
 CACHE_DIR = os.path.join(os.path.dirname(__file__), '__pycache__', 'dashboard_cache')
 os.makedirs(CACHE_DIR, exist_ok=True)
+CACHE_TTL_CURRENT_MONTH = 1800 # 30 minutos
 
 # --- Límite de líneas de ventas (para evitar sobrecarga en Render) ---
 try:
@@ -55,10 +67,6 @@ def is_current_month(año, mes):
 
 def get_cached_data(año, mes):
     """Obtiene datos del caché si existen y son válidos."""
-    # Para el mes actual, no usar caché (siempre datos frescos)
-    if is_current_month(año, mes):
-        return None
-    
     cache_key = get_cache_key(año, mes)
     cache_file = os.path.join(CACHE_DIR, f"{cache_key}.pkl")
     
@@ -66,27 +74,35 @@ def get_cached_data(año, mes):
         return None
     
     try:
-        # Para meses pasados, el caché es válido indefinidamente
         with open(cache_file, 'rb') as f:
-            cached_data = pickle.load(f)
-        print(f"✅ Datos cargados desde caché para {año}-{mes:02d}")
+            timestamp, cached_data = pickle.load(f)
+        
+        # Para el mes actual, verificar si el caché ha expirado
+        if is_current_month(año, mes):
+            age = (datetime.now() - timestamp).total_seconds()
+            if age > CACHE_TTL_CURRENT_MONTH:
+                print(f"🕒 Caché para mes actual expirado (antigüedad: {age:.0f}s). Se necesita refrescar.")
+                return None
+            print(f"⚡️ Datos cargados desde caché para MES ACTUAL (antigüedad: {age:.0f}s)")
+            return cached_data
+
+        # Para meses pasados, el caché es válido indefinidamente
+        print(f"✅ Datos cargados desde caché para mes pasado ({año}-{mes:02d})")
         return cached_data
     except Exception as e:
-        print(f"⚠️ Error al leer caché: {e}")
+        print(f"⚠️ Error al leer caché ({e.__class__.__name__}): {e}. Se tratará como sin caché.")
         return None
 
 def save_to_cache(año, mes, data):
-    """Guarda datos en el caché."""
-    # No cachear el mes actual
-    if is_current_month(año, mes):
-        return
-    
+    """Guarda datos en el caché con un timestamp."""
     cache_key = get_cache_key(año, mes)
     cache_file = os.path.join(CACHE_DIR, f"{cache_key}.pkl")
     
     try:
+        # Guardar siempre con el timestamp actual
+        data_to_cache = (datetime.now(), data)
         with open(cache_file, 'wb') as f:
-            pickle.dump(data, f)
+            pickle.dump(data_to_cache, f)
         print(f"💾 Datos guardados en caché para {año}-{mes:02d}")
     except Exception as e:
         print(f"⚠️ Error al guardar en caché: {e}")
@@ -126,6 +142,26 @@ def get_meses_del_año(año):
         mes_nombre = f"{meses_nombres[i-1]} {año}"
         meses_disponibles.append({'key': mes_key, 'nombre': mes_nombre})
     return meses_disponibles
+
+def get_data_source(año: int):
+    """
+    Determina de dónde obtener los datos según el año
+    
+    Args:
+        año: Año a consultar
+    
+    Returns:
+        'supabase' si el año está en Supabase, 'odoo' en caso contrario
+    """
+    # Años históricos (2025 y anteriores) en Supabase
+    if SUPABASE_ENABLED and año <= 2025:
+        has_data = supabase_manager.is_year_in_supabase(año)
+        print(f"🔍 Verificando año {año} en Supabase: {'✅ Encontrado' if has_data else '❌ No encontrado'}")
+        if has_data:
+            return 'supabase'
+    
+    print(f"🔄 Usando Odoo para año {año}")
+    return 'odoo'
 
 def normalizar_linea_comercial(nombre_linea):
     """
@@ -245,17 +281,52 @@ def dashboard():
         # --- Lógica de Permisos de Administrador ---
         is_admin = session.get('username') in ADMIN_USERS
 
-        # Obtener año actual y mes seleccionado
+        # Obtener año actual y año seleccionado
         fecha_actual = datetime.now()
         año_actual = fecha_actual.year
-        mes_seleccionado = request.args.get('mes', fecha_actual.strftime('%Y-%m'))
+        año_seleccionado = int(request.args.get('año', año_actual))
         
+        # Generar lista de años disponibles (desde 2020 hasta el año actual)
+        años_disponibles = list(range(2020, año_actual + 1))
+        
+        # Obtener mes seleccionado (puede venir como "2025-02" o como "2")
+        mes_param = request.args.get('mes', fecha_actual.strftime('%Y-%m'))
+        
+        # Si el mes ya tiene formato YYYY-MM, usarlo directamente
+        if '-' in str(mes_param) and len(str(mes_param).split('-')) == 2:
+            mes_seleccionado = str(mes_param)
+        else:
+            # Si solo viene el número del mes, construir el formato completo
+            mes_seleccionado = f"{año_seleccionado}-{str(mes_param).zfill(2)}"
+        
+        año_sel, mes_sel = mes_seleccionado.split('-')
+        año_sel_int = int(año_sel)
+        mes_sel_int = int(mes_sel)
+        
+        # Ajustar mes si no pertenece al año seleccionado
+        if año_sel_int != año_seleccionado:
+            mes_seleccionado = f"{año_seleccionado}-01"
+            año_sel_int = año_seleccionado
+            mes_sel_int = 1
+
+        # --- REVISAR CACHÉ ANTES DE HACER CÁLCULOS ---
+        cached_data = get_cached_data(año_sel_int, mes_sel_int)
+        if cached_data:
+            cached_data['is_admin'] = is_admin # Re-inyectar datos de sesión
+            cached_data['desde_cache'] = True
+            cached_data['años_disponibles'] = años_disponibles
+            cached_data['año_seleccionado'] = año_seleccionado
+            return render_template('dashboard_clean.html', **cached_data)
+
+        # Si no hay caché válido, continuar con la obtención de datos
+        print(f"🔄 Mes solicitado ({mes_seleccionado}): No se encontró caché válido. Obteniendo datos frescos...")
+
         # --- NUEVA LÓGICA DE FILTRADO POR DÍA ---
         # Obtener el día final del filtro, si existe
         dia_fin_param = request.args.get('dia_fin')
 
-        # Crear todos los meses del año actual
-        meses_disponibles = get_meses_del_año(año_actual)
+        # Crear todos los meses del año seleccionado
+        meses_disponibles = get_meses_del_año(año_seleccionado)
         
         # Obtener nombre del mes seleccionado
         mes_obj = next((m for m in meses_disponibles if m['key'] == mes_seleccionado), None)
@@ -288,9 +359,13 @@ def dashboard():
         fecha_inicio = f"{año_sel}-{mes_sel}-01"
         # --- FIN DE LA NUEVA LÓGICA ---
 
-
-        # Si es el mes actual, obtener datos frescos
-        print(f"🔄 Mes actual ({mes_seleccionado}): Obteniendo datos actualizados desde Odoo...")
+        # Determinar fuente de datos
+        data_source = get_data_source(año_sel_int)
+        
+        if data_source == 'supabase':
+            print(f"📊 Obteniendo datos históricos del {año_sel_int} desde Supabase...")
+        else:
+            print(f"🔄 Obteniendo datos del {año_sel_int} desde Odoo...")
 
         # Obtener metas del mes seleccionado desde la sesión
         metas_historicas = gs_manager.read_metas_por_linea()
@@ -317,36 +392,50 @@ def dashboard():
         
         # Las líneas comerciales se generan dinámicamente más adelante.
         
-        # Obtener datos reales de ventas desde Odoo
+        # Obtener datos reales de ventas desde la fuente correspondiente
         try:
             # Las fechas de inicio y fin ahora se calculan más arriba
             
-            # Obtener datos de ventas reales desde Odoo
-            # Solo traer ventas estrictamente del mes seleccionado, respetando filtros
-            sales_data = data_manager.get_sales_lines(
-                date_from=fecha_inicio,
-                date_to=fecha_fin,
-                limit=SALES_LIMIT
-            )
-            # Filtrar por mes exacto en caso de que Odoo devuelva líneas fuera del rango
-            sales_data = [s for s in sales_data if s.get('invoice_date', '').startswith(f'{año_sel}-{mes_sel}')]  # YYYY-MM
-            
-            print(f"📊 Obtenidas {len(sales_data)} líneas de ventas para el dashboard")
+            # Obtener datos de ventas reales desde Supabase u Odoo
+            if data_source == 'supabase':
+                sales_data = supabase_manager.get_dashboard_data(fecha_inicio, fecha_fin)
+                print(f"📊 Obtenidas {len(sales_data)} líneas de ventas desde Supabase")
+            else:
+                # Solo traer ventas estrictamente del mes seleccionado, respetando filtros
+                sales_data = data_manager.get_sales_lines(
+                    date_from=fecha_inicio,
+                    date_to=fecha_fin,
+                    limit=SALES_LIMIT
+                )
+                # Filtrar por mes exacto en caso de que Odoo devuelva líneas fuera del rango
+                sales_data = [s for s in sales_data if s.get('invoice_date', '').startswith(f'{año_sel}-{mes_sel}')]  # YYYY-MM
+                print(f"📊 Obtenidas {len(sales_data)} líneas de ventas desde Odoo")
             
             # Obtener clientes históricos (cartera activa) - clientes que han comprado desde inicio del año hasta el mes seleccionado
             try:
                 # Calcular fecha desde inicio del año hasta el final del mes seleccionado
-                fecha_inicio_ano = datetime(año_actual, 1, 1).strftime('%Y-%m-%d')
+                fecha_inicio_ano = datetime(año_seleccionado, 1, 1).strftime('%Y-%m-%d')
                 ultimo_dia_mes_sel = calendar.monthrange(int(año_sel), int(mes_sel))[1]
                 fecha_fin_mes_sel = f"{int(año_sel):04d}-{int(mes_sel):02d}-{ultimo_dia_mes_sel:02d}"
                 
-                # OPTIMIZACIÓN: Usar read_group para contar clientes únicos sin descargar todas las líneas
-                total_clientes = data_manager.get_active_partners_count(
-                    date_from=fecha_inicio_ano,
-                    date_to=fecha_fin_mes_sel
-                )
+                # Determinar fuente de datos según el AÑO SELECCIONADO (no el año actual del sistema)
+                source = get_data_source(año_seleccionado)
                 
-                print(f"👥 Total de clientes en cartera activa (año {año_actual}): {total_clientes}")
+                # ESTRATEGIA MIXTA: Para años históricos (2025), usar cartera total de Odoo
+                # pero activos desde Supabase para comparar contra la base completa
+                if source == 'supabase':
+                    print(f"👥 CARTERA: Obteniendo base total desde Odoo (todos los clientes)")
+                    total_clientes = data_manager.get_total_partners_count()
+                    print(f"👥 Base de cartera total: {total_clientes} clientes")
+                else:
+                    print(f"👥 Obteniendo cartera de clientes desde Odoo (año {año_seleccionado})")
+                    # Para año actual, cartera = clientes que han comprado en el año
+                    total_clientes = data_manager.get_active_partners_count(
+                        date_from=fecha_inicio_ano,
+                        date_to=fecha_fin_mes_sel
+                    )
+                
+                print(f"👥 Total de clientes en cartera (año {año_seleccionado}): {total_clientes}")
             except Exception as e:
                 print(f"⚠️ Error obteniendo cartera de clientes: {e}")
                 total_clientes = 0
@@ -457,13 +546,27 @@ def dashboard():
         # --- CÁLCULO DE COBERTURA DE CLIENTES ---
         print("🔍 Calculando cobertura de clientes por canal...")
         
-        # 1. Obtener distribución de TODA la cartera histórica por canal (año completo)
-        fecha_inicio_ano = datetime(año_actual, 1, 1).strftime('%Y-%m-%d')
-        # ultimo_dia_mes_sel y fecha_fin_mes_sel ya están definidos arriba
-        cartera_por_canal = data_manager.get_active_partners_by_channel(fecha_inicio_ano, fecha_fin_mes_sel)
+        # Determinar fuente de datos según AÑO SELECCIONADO
+        source_cobertura = get_data_source(año_seleccionado)
         
-        # 2. Obtener distribución de clientes ACTIVOS en el periodo seleccionado
-        activos_por_canal = data_manager.get_active_partners_by_channel(fecha_inicio, fecha_fin)
+        if source_cobertura == 'supabase':
+            print("📊 Usando Supabase para cálculo de cobertura")
+            # 1. Obtener distribución de TODA la cartera histórica por canal (año completo)
+            fecha_inicio_ano = datetime(año_seleccionado, 1, 1).strftime('%Y-%m-%d')
+            # ultimo_dia_mes_sel y fecha_fin_mes_sel ya están definidos arriba
+            cartera_por_canal = supabase_manager.get_active_partners_by_channel(fecha_inicio_ano, fecha_fin_mes_sel)
+            
+            # 2. Obtener distribución de clientes ACTIVOS en el periodo seleccionado
+            activos_por_canal = supabase_manager.get_active_partners_by_channel(fecha_inicio, fecha_fin)
+        else:
+            print("📊 Usando Odoo para cálculo de cobertura")
+            # 1. Obtener distribución de TODA la cartera histórica por canal (año completo)
+            fecha_inicio_ano = datetime(año_seleccionado, 1, 1).strftime('%Y-%m-%d')
+            # ultimo_dia_mes_sel y fecha_fin_mes_sel ya están definidos arriba
+            cartera_por_canal = data_manager.get_active_partners_by_channel(fecha_inicio_ano, fecha_fin_mes_sel)
+            
+            # 2. Obtener distribución de clientes ACTIVOS en el periodo seleccionado
+            activos_por_canal = data_manager.get_active_partners_by_channel(fecha_inicio, fecha_fin)
         
         # 3. Construir tabla de cobertura
         datos_cobertura_canal = []
@@ -505,7 +608,8 @@ def dashboard():
             'es_total': True
         })
         
-        print(f"📊 Cobertura global: {num_clientes_activos} activos de {total_clientes} totales = {cobertura_clientes:.1f}%")
+        print(f"📊 Cobertura global: {num_clientes_activos} activos de {total_clientes} cartera = {cobertura_clientes:.1f}%")
+        print(f"📊 Variables para KPIs - total_clientes: {total_clientes}, num_clientes_activos: {num_clientes_activos}, cobertura: {cobertura_clientes:.2f}%")
 
         # --- CÁLCULO DE FRECUENCIA DE COMPRA POR LÍNEA COMERCIAL ---
         # Usa la misma agrupación que "Análisis de Clientes por Línea Comercial"
@@ -736,40 +840,39 @@ def dashboard():
         print(f"📊 Análisis RFM: {len(clientes_rfm)} clientes segmentados en {len(segmentos_rfm)} categorías")
         
 
-        # --- TENDENCIA HISTÓRICA (ÚLTIMOS 12 MESES) - SIEMPRE ANUAL ---
-        print(f"📈 Generando tendencia histórica de ventas (últimos 12 meses, independiente del mes seleccionado)...")
+        # --- TENDENCIA HISTÓRICA (12 MESES DEL AÑO SELECCIONADO) ---
+        print(f"📈 Generando tendencia histórica de ventas para el año {año_seleccionado}...")
         tendencia_12_meses = []
-        fecha_base = datetime.now()
-        fecha_inicio_tendencia = (fecha_base - timedelta(days=365)).replace(day=1).strftime('%Y-%m-%d')
-        fecha_fin_tendencia = fecha_base.strftime('%Y-%m-%d')
-        resumen_mensual = data_manager.get_sales_summary_by_month(fecha_inicio_tendencia, fecha_fin_tendencia)
-        for i in range(11, -1, -1):
-            meses_atras = i
-            if fecha_base.month - meses_atras > 0:
-                mes_num = fecha_base.month - meses_atras
-                año_mes = fecha_base.year
-            else:
-                mes_num = 12 + (fecha_base.month - meses_atras)
-                año_mes = fecha_base.year - 1
-            fecha_mes = datetime(año_mes, mes_num, 1)
-            mes_key = f"{año_mes}-{mes_num:02d}"
+        fecha_inicio_tendencia = f"{año_seleccionado}-01-01"
+        fecha_fin_tendencia = f"{año_seleccionado}-12-31"
+        
+        # Obtener resumen desde la fuente correspondiente
+        tendencia_data_source = get_data_source(año_seleccionado)
+        if tendencia_data_source == 'supabase':
+            resumen_mensual = supabase_manager.get_sales_by_month(fecha_inicio_tendencia, fecha_fin_tendencia)
+        else:
+            resumen_mensual = data_manager.get_sales_summary_by_month(fecha_inicio_tendencia, fecha_fin_tendencia)
+        
+        for mes_num in range(1, 13):
+            fecha_mes = datetime(año_seleccionado, mes_num, 1)
+            mes_key = f"{año_seleccionado}-{mes_num:02d}"
             meses_es = {
                 1: 'enero', 2: 'febrero', 3: 'marzo', 4: 'abril', 5: 'mayo', 6: 'junio',
                 7: 'julio', 8: 'agosto', 9: 'septiembre', 10: 'octubre', 11: 'noviembre', 12: 'diciembre'
             }
             venta_mes = 0
-            label_busqueda_es = f"{meses_es[mes_num]} {año_mes}"
+            label_busqueda_es = f"{meses_es[mes_num]} {año_seleccionado}"
             label_busqueda_en = fecha_mes.strftime('%B %Y').lower()
             for key, val in resumen_mensual.items():
                 key_lower = key.lower()
                 if label_busqueda_es == key_lower or label_busqueda_en == key_lower:
                     venta_mes = val
                     break
-                if meses_es[mes_num] in key_lower and str(año_mes) in key_lower:
+                if meses_es[mes_num] in key_lower and str(año_seleccionado) in key_lower:
                     venta_mes = val
                     break
             try:
-                meta_key = f"{año_mes}-{mes_num:02d}"
+                meta_key = f"{año_seleccionado}-{mes_num:02d}"
                 metas_mes_data = metas_historicas.get(meta_key, {}).get('metas', {})
                 meta_mes = sum(metas_mes_data.values())
             except:
@@ -781,7 +884,7 @@ def dashboard():
                 'meta': meta_mes,
                 'cumplimiento': (venta_mes / meta_mes * 100) if meta_mes > 0 else 0
             })
-        print(f"📊 Tendencia histórica: {len(tendencia_12_meses)} meses procesados")
+        print(f"📊 Tendencia histórica: {len(tendencia_12_meses)} meses procesados para el año {año_seleccionado}")
         
         # --- HEATMAP DE ACTIVIDAD DE VENTAS ---
         print(f"🔥 Generando heatmap de actividad de ventas para {mes_seleccionado}...")
@@ -1260,6 +1363,8 @@ def dashboard():
         # Preparar los datos para renderizar
         render_data = {
             'meses_disponibles': meses_disponibles,
+            'años_disponibles': años_disponibles,
+            'año_seleccionado': año_seleccionado,
             'mes_seleccionado': mes_seleccionado,
             'mes_nombre': mes_nombre,
             'dia_actual': dia_actual,
@@ -1268,6 +1373,9 @@ def dashboard():
             'datos_lineas_tabla': datos_lineas_tabla_sorted,
             'datos_clientes_por_linea': datos_clientes_por_linea,
             'datos_cobertura_canal': datos_cobertura_canal,
+            'cobertura_clientes': cobertura_clientes,  # Agregar cobertura general
+            'total_clientes': total_clientes,  # Agregar cartera total
+            'num_clientes_activos': num_clientes_activos,  # Agregar clientes activos
             'datos_frecuencia_linea': datos_frecuencia_linea,
             'clientes_rfm': clientes_rfm_sorted[:100],  # Top 100 clientes
             'segmentos_rfm': segmentos_rfm,
@@ -1291,14 +1399,12 @@ def dashboard():
             'desde_cache': False  # Datos frescos
         }
         
-        # Guardar en caché (solo si NO es el mes actual)
-        if not is_current_month(año_sel_int, mes_sel_int):
-            # Crear una copia sin datos específicos del usuario
-            cache_data = render_data.copy()
-            cache_data.pop('is_admin', None)  # No cachear datos de sesión
-            cache_data['desde_cache'] = False  # Este valor se sobrescribirá al leer del caché
-            save_to_cache(año_sel_int, mes_sel_int, cache_data)
-            print(f"✅ Datos guardados en caché. Próximas consultas serán instantáneas.")
+        # Guardar en caché para futuras solicitudes.
+        # La nueva lógica de caché maneja la expiración para el mes actual.
+        cache_data = render_data.copy()
+        cache_data.pop('is_admin', None)  # No cachear datos de sesión
+        cache_data['desde_cache'] = False  # Se establecerá en True al leer del caché
+        save_to_cache(año_sel_int, mes_sel_int, cache_data)
 
         return render_template('dashboard_clean.html', **render_data)
     
@@ -1307,6 +1413,7 @@ def dashboard():
         
         # Crear datos por defecto para evitar errores
         fecha_actual = datetime.now()
+        año_actual = fecha_actual.year
         kpis_default = {
             'meta_total': 0,
             'venta_total': 0,
@@ -1327,6 +1434,8 @@ def dashboard():
                                  'key': fecha_actual.strftime('%Y-%m'),
                                  'nombre': f"{fecha_actual.strftime('%B')} {fecha_actual.year}"
                              }],
+                             años_disponibles=list(range(2020, año_actual + 1)),
+                             año_seleccionado=año_actual,
                              mes_seleccionado=fecha_actual.strftime('%Y-%m'),
                              mes_nombre=f"{fecha_actual.strftime('%B').upper()} {fecha_actual.year}",
                              dia_actual=fecha_actual.day,
@@ -1959,6 +2068,140 @@ def export_dashboard_details():
     except Exception as e:
         flash(f'Error al exportar los detalles del dashboard: {str(e)}', 'danger')
         return redirect(url_for('dashboard'))
+
+
+@app.route('/api/mapa-ventas', methods=['GET'])
+def api_mapa_ventas():
+    """API endpoint para obtener datos del mapa geográfico de ventas"""
+    if 'username' not in session:
+        return {'error': 'No autenticado'}, 401
+    
+    try:
+        año = int(request.args.get('año', datetime.now().year))
+        mes = int(request.args.get('mes', datetime.now().month))
+        
+        # Construir rango de fechas
+        fecha_inicio = datetime(año, mes, 1).strftime('%Y-%m-%d')
+        ultimo_dia = calendar.monthrange(año, mes)[1]
+        fecha_fin = datetime(año, mes, ultimo_dia).strftime('%Y-%m-%d')
+        
+        # Determinar fuente de datos
+        source = get_data_source(año)
+        
+        if source == 'supabase':
+            print(f"🗺️ Obteniendo datos del mapa desde Supabase ({año}-{mes:02d})")
+            sales_data = supabase_manager.get_sales_data(fecha_inicio, fecha_fin)
+        else:
+            print(f"🗺️ Obteniendo datos del mapa desde Odoo ({año}-{mes:02d})")
+            sales_data = data_manager.get_sales_lines(fecha_inicio, fecha_fin, limit=SALES_LIMIT)
+        
+        # Validar que sales_data sea una lista
+        if not isinstance(sales_data, list):
+            print(f"⚠️ sales_data no es una lista: {type(sales_data)}")
+            sales_data = []
+        
+        print(f"📊 Total registros obtenidos para mapa: {len(sales_data)}")
+        
+        if len(sales_data) == 0:
+            return {
+                'success': True,
+                'data': [],
+                'periodo': f"{año}-{mes:02d}",
+                'fuente': source,
+                'total_provincias': 0,
+                'total_ventas': 0
+            }
+        
+        # Procesar datos por provincia
+        ventas_por_provincia = {}
+        clientes_por_provincia = {}
+        
+        for idx, sale in enumerate(sales_data):
+            try:
+                # Validar que sale sea un diccionario
+                if not isinstance(sale, dict):
+                    print(f"⚠️ Registro {idx} no es dict: {type(sale)}")
+                    continue
+                
+                # Obtener provincia (state_id)
+                provincia_info = sale.get('state_id') or sale.get('provincia')
+                if not provincia_info:
+                    continue
+                
+                # Normalizar nombre de provincia
+                if isinstance(provincia_info, list) and len(provincia_info) > 1:
+                    provincia_nombre = str(provincia_info[1]).upper()
+                elif isinstance(provincia_info, str):
+                    provincia_nombre = provincia_info.upper()
+                else:
+                    continue
+                
+                # Limpiar nombre
+                provincia_nombre = re.sub(r'\s*\(PE\)\s*', '', provincia_nombre, flags=re.IGNORECASE).strip()
+                provincia_nombre = provincia_nombre.replace('Á', 'A').replace('É', 'E').replace('Í', 'I').replace('Ó', 'O').replace('Ú', 'U')
+                
+                # Mapeos específicos
+                if 'CALLAO' in provincia_nombre:
+                    provincia_nombre = 'CALLAO'
+                elif 'MARTIN' in provincia_nombre:
+                    provincia_nombre = 'SAN MARTIN'
+                
+                # Obtener monto (manejar tanto 'balance' como 'price_subtotal')
+                balance = sale.get('balance') or sale.get('price_subtotal', 0)
+                
+                # Convertir a float de manera segura
+                if isinstance(balance, str):
+                    balance = float(balance.replace(',', '').replace('S/', '').strip())
+                elif balance is None:
+                    balance = 0
+                else:
+                    balance = float(balance)
+                
+                # Acumular ventas
+                ventas_por_provincia[provincia_nombre] = ventas_por_provincia.get(provincia_nombre, 0) + balance
+                
+                # Contar clientes únicos
+                partner_id = sale.get('partner_id')
+                if partner_id:
+                    if isinstance(partner_id, list) and len(partner_id) > 0:
+                        partner_id = partner_id[0]
+                    
+                    if provincia_nombre not in clientes_por_provincia:
+                        clientes_por_provincia[provincia_nombre] = set()
+                    clientes_por_provincia[provincia_nombre].add(partner_id)
+            
+            except Exception as e:
+                print(f"⚠️ Error procesando registro {idx}: {e}")
+                continue
+        
+        # Preparar respuesta
+        mapa_data = []
+        for provincia, ventas in ventas_por_provincia.items():
+            num_clientes = len(clientes_por_provincia.get(provincia, set()))
+            mapa_data.append({
+                'name': provincia,
+                'value': round(ventas, 2),
+                'clientes': num_clientes,
+                'ticket_promedio': round(ventas / num_clientes, 2) if num_clientes > 0 else 0
+            })
+        
+        # Ordenar por ventas descendente
+        mapa_data.sort(key=lambda x: x['value'], reverse=True)
+        
+        print(f"🗺️ Mapa generado: {len(mapa_data)} provincias con ventas")
+        
+        return {
+            'success': True,
+            'data': mapa_data,
+            'periodo': f"{año}-{mes:02d}",
+            'fuente': source,
+            'total_provincias': len(mapa_data),
+            'total_ventas': sum(ventas_por_provincia.values())
+        }
+    
+    except Exception as e:
+        print(f"❌ Error en API mapa-ventas: {e}")
+        return {'error': str(e)}, 500
 
 
 if __name__ == '__main__':

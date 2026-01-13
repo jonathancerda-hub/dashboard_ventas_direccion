@@ -1,11 +1,17 @@
 # Entorno Virtual de Python
 # Ignora la carpeta que contiene todas las librerías instaladas.
 venv/
+.venv/
 
 # Archivos de caché de Python
 # Estos se generan automáticamente y no deben ser versionados.
 __pycache__/
 *.py[cod]
+*.pyc
+*.pyo
+
+# Caché del dashboard
+dashboard_cache/
 
 # Archivos de entorno
 # Contiene variables sensibles como la SECRET_KEY y el nombre de la hoja de Google.
@@ -26,11 +32,33 @@ RENDER_SETUP.md
 
 # Archivos de sistema operativo
 .DS_Store
+Thumbs.db
 
 # Archivos de registro (si se generan)
 *.log
 
-# Archivos de datos locales (ahora obsoletos, pero es bueno ignorarlos)
+# Archivos de datos locales
 metas.json
 equipos_ventas.json
 metas_vendedores.json
+
+# Archivos temporales y de prueba
+test_*.py
+debug_*.py
+fix_*.py
+*_temp.py
+*_test.py
+comparar_*.py
+verificar_*.py
+analizar_*.py
+migrate_*.py
+remigrate_*.py
+inspeccionar_*.py
+diagnostico_*.py
+optimize_*.py
+contar_*.py
+
+# Archivos HTML temporales
+graficos_alto_impacto.html
+manual.html
+PRD_*.html

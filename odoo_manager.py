@@ -425,6 +425,34 @@ class OdooManager:
             print(f"❌ Error contando clientes en Odoo: {e}")
             return 0
 
+    def get_total_partners_count(self):
+        """
+        Cuenta el total de clientes en la cartera de Odoo (excluyendo internacionales).
+        """
+        try:
+            if not self.uid or not self.models:
+                return 0
+            
+            print("👥 Contando total de clientes en cartera de Odoo...")
+            
+            domain = [
+                ('active', '=', True),
+                ('customer_rank', '>', 0),  # Solo clientes, no proveedores
+                ('sales_channel_id.name', '=', 'NACIONAL')  # Excluir internacionales
+            ]
+            
+            count = self.models.execute_kw(
+                self.db, self.uid, self.password, 'res.partner', 'search_count',
+                [domain]
+            )
+            
+            print(f"✅ Total de clientes en cartera: {count}")
+            return count
+            
+        except Exception as e:
+            print(f"❌ Error contando cartera de clientes en Odoo: {e}")
+            return 0
+
     def get_active_partners_by_channel(self, date_from, date_to):
         """
         Obtiene la cantidad de clientes únicos agrupados por su canal de ventas.
@@ -508,7 +536,7 @@ class OdooManager:
                 ('move_id.state', '=', 'posted'),
                 ('product_id.default_code', '!=', False),
                 ('product_id.commercial_line_national_id', '!=', False),
-                ('move_id.sales_channel_id.name', '=', 'NACIONAL')
+                ('move_id.sales_channel_id.name', '!=', 'INTERNACIONAL')
             ]
             
             # Filtros de exclusión de categorías específicas
