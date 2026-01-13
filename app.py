@@ -2180,7 +2180,7 @@ def api_mapa_ventas():
             sales_data = supabase_manager.get_sales_data(fecha_inicio, fecha_fin)
         else:
             print(f"🗺️ Obteniendo datos del mapa desde Odoo ({año}-{mes:02d})")
-            sales_data = data_manager.get_sales_lines(fecha_inicio, fecha_fin, limit=SALES_LIMIT)
+            sales_data = data_manager.get_sales_lines(date_from=fecha_inicio, date_to=fecha_fin, limit=SALES_LIMIT)
         
         # Validar que sales_data sea una lista
         if not isinstance(sales_data, list):
