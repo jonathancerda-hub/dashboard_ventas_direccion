@@ -298,7 +298,7 @@ def api_tendencia():
             resumen_mensual = data_manager.get_sales_summary_by_month(fecha_inicio, fecha_fin)
         
         # Obtener metas del año
-        metas_historicas = gs_manager.get_metas_historicas()
+        metas_historicas = gs_manager.read_metas_por_linea()
         
         # Construir array de 12 meses
         tendencia = []
