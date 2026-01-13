@@ -750,8 +750,10 @@ class OdooManager:
                     if tid in tax_names:
                         imp_list.append(tax_names[tid])
                 imp_str = ', '.join(imp_list) if imp_list else ''
-                # Filtrar por impuestos IGV o IGV_INC
-                if 'IGV' in imp_list or 'IGV_INC' in imp_list:
+                
+                # Filtrar por impuestos IGV o IGV_INC (buscar en cualquier parte del nombre)
+                tiene_igv = any('IGV' in str(imp).upper() for imp in imp_list)
+                if tiene_igv:
                     # APLICAR CAMBIO: Reemplazar línea comercial para usuarios ECOMMERCE específicos
                     # Se hace aquí para que el commercial_line_national_id original esté disponible para otros cálculos si es necesario
                     commercial_line_id = product.get('commercial_line_national_id')
