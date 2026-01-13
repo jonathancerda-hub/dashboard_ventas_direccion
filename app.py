@@ -272,6 +272,91 @@ def index():
     return redirect(url_for('dashboard'))
 
 
+@app.route('/api/tendencia', methods=['GET'])
+def api_tendencia():
+    """API para obtener datos de tendencia histórica de un año específico"""
+    if 'username' not in session:
+        return jsonify({'error': 'No autorizado'}), 401
+    
+    try:
+        año = int(request.args.get('año', datetime.now().year))
+        
+        print(f"📊 API Tendencia: Solicitando datos para año {año}")
+        
+        # Obtener datos de tendencia para el año completo
+        fecha_inicio = f"{año}-01-01"
+        fecha_fin = f"{año}-12-31"
+        
+        # Determinar fuente de datos
+        data_source = get_data_source(año)
+        print(f"📊 Fuente de datos para {año}: {data_source}")
+        
+        # Obtener resumen mensual
+        if data_source == 'supabase':
+            resumen_mensual = supabase_manager.get_sales_by_month(fecha_inicio, fecha_fin)
+        else:
+            resumen_mensual = data_manager.get_sales_summary_by_month(fecha_inicio, fecha_fin)
+        
+        # Obtener metas del año
+        metas_historicas = google_sheets_manager.get_metas_historicas()
+        
+        # Construir array de 12 meses
+        tendencia = []
+        meses_es = {
+            1: 'enero', 2: 'febrero', 3: 'marzo', 4: 'abril', 5: 'mayo', 6: 'junio',
+            7: 'julio', 8: 'agosto', 9: 'septiembre', 10: 'octubre', 11: 'noviembre', 12: 'diciembre'
+        }
+        
+        for mes_num in range(1, 13):
+            fecha_mes = datetime(año, mes_num, 1)
+            mes_key = f"{año}-{mes_num:02d}"
+            
+            # Buscar venta del mes
+            venta_mes = 0
+            label_busqueda_es = f"{meses_es[mes_num]} {año}"
+            label_busqueda_en = fecha_mes.strftime('%B %Y').lower()
+            
+            for key, val in resumen_mensual.items():
+                key_lower = key.lower()
+                if label_busqueda_es == key_lower or label_busqueda_en == key_lower:
+                    venta_mes = val
+                    break
+                if meses_es[mes_num] in key_lower and str(año) in key_lower:
+                    venta_mes = val
+                    break
+            
+            # Buscar meta del mes
+            try:
+                meta_key = f"{año}-{mes_num:02d}"
+                metas_mes_data = metas_historicas.get(meta_key, {}).get('metas', {})
+                meta_mes = sum(metas_mes_data.values())
+            except:
+                meta_mes = 0
+            
+            tendencia.append({
+                'mes': mes_key,
+                'mes_nombre': fecha_mes.strftime('%b %Y'),
+                'venta': venta_mes,
+                'meta': meta_mes,
+                'cumplimiento': (venta_mes / meta_mes * 100) if meta_mes > 0 else 0
+            })
+        
+        print(f"✅ API Tendencia: {len(tendencia)} meses procesados para {año}")
+        
+        return jsonify({
+            'success': True,
+            'año': año,
+            'tendencia': tendencia,
+            'fuente': data_source
+        })
+        
+    except Exception as e:
+        print(f"❌ Error en API tendencia: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/dashboard', methods=['GET', 'POST'])
 def dashboard():
     if 'username' not in session:

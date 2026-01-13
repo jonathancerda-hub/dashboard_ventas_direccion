@@ -1711,10 +1711,15 @@
                     }
 
                     // Fetch de datos del año siguiente
-                    fetch(`/render-data?año=${añoSiguiente}&mes=1`)
-                        .then(response => response.json())
+                    fetch(`/api/tendencia?año=${añoSiguiente}`)
+                        .then(response => {
+                            if (!response.ok) {
+                                throw new Error(`HTTP error! status: ${response.status}`);
+                            }
+                            return response.json();
+                        })
                         .then(data => {
-                            if (data.tendencia && data.tendencia.length > 0) {
+                            if (data.success && data.tendencia && data.tendencia.length > 0) {
                                 // Agregar dataset del año siguiente
                                 const ventasSiguiente = data.tendencia.map(d => d.venta);
                                 window.chartTendencia.data.datasets.push({
@@ -1734,7 +1739,7 @@
                         })
                         .catch(error => {
                             console.error('Error al cargar datos de comparación:', error);
-                            alert(`Error al cargar datos de ${añoSiguiente}`);
+                            alert(`Error al cargar datos de ${añoSiguiente}: ${error.message}`);
                             document.getElementById('compararAñoSiguiente').checked = false;
                         })
                         .finally(() => {
