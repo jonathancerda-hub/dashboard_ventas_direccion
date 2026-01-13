@@ -502,9 +502,19 @@
 
                 <!-- Tendencia Histórica de Ventas (12 meses) -->
                 <div class="grafico-container" style="margin-top: 30px;">
-                    <div class="tabla-header">
-                        <h3>📈 Tendencia Histórica de Ventas (12 Meses)</h3>
-                        <span style="font-size:13px; color:#1890ff; font-weight:500; margin-left:10px;">(Siempre anual, no depende del filtro de mes)</span>
+                    <div class="tabla-header" style="display: flex; justify-content: space-between; align-items: center;">
+                        <div>
+                            <h3>📈 Tendencia Histórica de Ventas (12 Meses)</h3>
+                            <span style="font-size:13px; color:#1890ff; font-weight:500; margin-left:10px;">(Siempre anual, no depende del filtro de mes)</span>
+                        </div>
+                        {% if año_seleccionado < año_actual %}
+                        <div style="display: flex; align-items: center; gap: 8px;">
+                            <input type="checkbox" id="compararAñoSiguiente" style="cursor: pointer; width: 18px; height: 18px;">
+                            <label for="compararAñoSiguiente" style="cursor: pointer; font-size: 14px; font-weight: 500; color: #333; margin: 0;">
+                                Comparar con {{ año_seleccionado + 1 }}
+                            </label>
+                        </div>
+                        {% endif %}
                     </div>
 
                     <div style="margin-top: 20px; position: relative;">
@@ -1647,15 +1657,19 @@
                     const intercept = (sumY - slope * sumX) / n;
                     const trendData = data.map((_, i) => slope * i + intercept);
 
-                    new Chart(ctx, {
+                    // Dataset inicial
+                    const datasets = [
+                        { label: 'Venta Real', data: data, borderColor: '#875A7B', backgroundColor: 'rgba(135, 90, 123, 0.1)', fill: true, tension: 0.4 },
+                        { label: 'Meta', data: globalData.tendencia.map(d => d.meta), borderColor: '#faad14', borderDash: [5, 5], fill: false, tension: 0.4 },
+                        { label: 'Tendencia', data: trendData, borderColor: '#1890ff', borderDash: [3, 3], borderWidth: 2, fill: false, tension: 0, pointRadius: 0 }
+                    ];
+
+                    // Crear el gráfico y guardarlo en una variable global
+                    window.chartTendencia = new Chart(ctx, {
                         type: 'line',
                         data: {
                             labels: globalData.tendencia.map(d => d.mes_nombre),
-                            datasets: [
-                                { label: 'Venta Real', data: data, borderColor: '#875A7B', backgroundColor: 'rgba(135, 90, 123, 0.1)', fill: true, tension: 0.4 },
-                                { label: 'Meta', data: globalData.tendencia.map(d => d.meta), borderColor: '#faad14', borderDash: [5, 5], fill: false, tension: 0.4 },
-                                { label: 'Tendencia', data: trendData, borderColor: '#1890ff', borderDash: [3, 3], borderWidth: 2, fill: false, tension: 0, pointRadius: 0 }
-                            ]
+                            datasets: datasets
                         },
                         options: {
                             responsive: true,
@@ -1672,6 +1686,70 @@
                             }
                         }
                     });
+
+                    // Agregar evento al checkbox de comparación
+                    const checkbox = document.getElementById('compararAñoSiguiente');
+                    if (checkbox) {
+                        checkbox.addEventListener('change', function() {
+                            if (this.checked) {
+                                agregarComparacionAñoSiguiente();
+                            } else {
+                                quitarComparacionAñoSiguiente();
+                            }
+                        });
+                    }
+                }
+
+                function agregarComparacionAñoSiguiente() {
+                    const añoActual = {{ año_seleccionado }};
+                    const añoSiguiente = añoActual + 1;
+                    
+                    // Mostrar loading
+                    const canvas = document.getElementById('graficoTendencia12Meses');
+                    if (canvas) {
+                        canvas.style.opacity = '0.5';
+                    }
+
+                    // Fetch de datos del año siguiente
+                    fetch(`/render-data?año=${añoSiguiente}&mes=1`)
+                        .then(response => response.json())
+                        .then(data => {
+                            if (data.tendencia && data.tendencia.length > 0) {
+                                // Agregar dataset del año siguiente
+                                const ventasSiguiente = data.tendencia.map(d => d.venta);
+                                window.chartTendencia.data.datasets.push({
+                                    label: `Venta ${añoSiguiente}`,
+                                    data: ventasSiguiente,
+                                    borderColor: '#ff7300',
+                                    backgroundColor: 'rgba(255, 115, 0, 0.1)',
+                                    fill: false,
+                                    tension: 0.4,
+                                    borderWidth: 2
+                                });
+                                window.chartTendencia.update();
+                            } else {
+                                alert(`No hay datos disponibles para ${añoSiguiente}`);
+                                document.getElementById('compararAñoSiguiente').checked = false;
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Error al cargar datos de comparación:', error);
+                            alert(`Error al cargar datos de ${añoSiguiente}`);
+                            document.getElementById('compararAñoSiguiente').checked = false;
+                        })
+                        .finally(() => {
+                            if (canvas) {
+                                canvas.style.opacity = '1';
+                            }
+                        });
+                }
+
+                function quitarComparacionAñoSiguiente() {
+                    // Remover el dataset del año siguiente (siempre es el último agregado)
+                    if (window.chartTendencia && window.chartTendencia.data.datasets.length > 3) {
+                        window.chartTendencia.data.datasets.pop();
+                        window.chartTendencia.update();
+                    }
                 }
 
                 function crearGraficoSegmentosRFM() {
