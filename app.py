@@ -846,7 +846,7 @@ def dashboard():
         fecha_inicio_tendencia = f"{año_seleccionado}-01-01"
         fecha_fin_tendencia = f"{año_seleccionado}-12-31"
         
-        # Obtener resumen desde la fuente correspondiente
+        # Obtener resumen solo del año seleccionado (no últimos 12 meses mezclados)
         tendencia_data_source = get_data_source(año_seleccionado)
         if tendencia_data_source == 'supabase':
             resumen_mensual = supabase_manager.get_sales_by_month(fecha_inicio_tendencia, fecha_fin_tendencia)

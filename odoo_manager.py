@@ -327,21 +327,32 @@ class OdooManager:
 
     def get_sales_summary_by_month(self, date_from=None, date_to=None):
         """
-        Obtiene un resumen de ventas de los ÚLTIMOS 12 MESES completos.
-        Los parámetros date_from/date_to se ignoran para garantizar que siempre
-        se muestren 12 meses en la Tendencia Histórica, independientemente del filtro de mes.
+        Obtiene un resumen de ventas agrupado por mes para el rango especificado.
+        Si no se especifican fechas, usa los últimos 12 meses desde hoy.
+        
+        Args:
+            date_from: Fecha inicio (YYYY-MM-DD). Ej: '2026-01-01'
+            date_to: Fecha fin (YYYY-MM-DD). Ej: '2026-12-31'
+        
+        Returns:
+            Dict con {mes: total_ventas}. Ej: {'enero 2026': 150000.0, ...}
         """
         try:
             if not self.uid or not self.models:
                 return {}
             
-            # Calcular últimos 12 meses desde hoy
             from datetime import datetime, timedelta
-            today = datetime.now()
-            date_to_12m = today.strftime('%Y-%m-%d')
-            date_from_12m = (today.replace(day=1) - timedelta(days=365)).strftime('%Y-%m-01')
             
-            print(f"📊 Obteniendo resumen mensual de últimos 12 meses: {date_from_12m} hasta {date_to_12m}...")
+            # Si no se proporcionan fechas, usar últimos 12 meses
+            if not date_from or not date_to:
+                today = datetime.now()
+                date_to_12m = today.strftime('%Y-%m-%d')
+                date_from_12m = (today.replace(day=1) - timedelta(days=365)).strftime('%Y-%m-01')
+            else:
+                date_from_12m = date_from
+                date_to_12m = date_to
+            
+            print(f"📊 Obteniendo resumen mensual: {date_from_12m} hasta {date_to_12m}...")
             
             # Usar get_sales_lines para obtener datos con filtros consistentes
             sales_lines = self.get_sales_lines(
