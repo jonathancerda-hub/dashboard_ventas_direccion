@@ -873,10 +873,37 @@
 
                 <!-- 🔥 HEATMAP DE ACTIVIDAD DE VENTAS -->
                 <div class="grafico-container" style="margin-top: 30px; overflow: hidden;">
-                    <h3 style="margin-bottom: 20px;">
-                        <span style="font-size: 22px;">🔥</span>
-                        Heatmap de Actividad de Ventas
-                    </h3>
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                        <h3 style="margin: 0;">
+                            <span style="font-size: 22px;">🔥</span>
+                            Heatmap de Actividad de Ventas - <span id="mesHeatmapTitulo" style="color: #875A7B;">{{ mes_nombre }} {{ año }}</span>
+                        </h3>
+                        
+                        <!-- Filtro de vendedor -->
+                        <div style="position: relative;">
+                            <select id="filtroVendedorHeatmap" 
+                                    onchange="cambiarVendedorHeatmap()"
+                                    style="
+                                        width: 280px;
+                                        padding: 10px 35px 10px 15px;
+                                        border: 2px solid #875A7B;
+                                        border-radius: 8px;
+                                        font-size: 14px;
+                                        font-weight: 500;
+                                        color: #333;
+                                        background-color: #fff;
+                                        cursor: pointer;
+                                        appearance: none;
+                                        transition: all 0.3s ease;
+                                        box-shadow: 0 2px 4px rgba(135, 90, 123, 0.1);
+                                    ">
+                                <option value="TODOS">📊 Todos los Vendedores</option>
+                            </select>
+                            <svg style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); pointer-events: none; width: 12px; height: 12px;" viewBox="0 0 12 12" fill="none">
+                                <path d="M2 4L6 8L10 4" stroke="#875A7B" stroke-width="2" stroke-linecap="round"/>
+                            </svg>
+                        </div>
+                    </div>
 
                     <div
                         style="background: #fff9e6; padding: 12px 15px; border-left: 4px solid #faad14; border-radius: 4px; margin-bottom: 20px; font-size: 13px;">
@@ -1740,10 +1767,13 @@
                     rfmPorCanal: {{ segmentos_por_canal|default({})|tojson|safe }}, // Nuevo: RFM por canal
                     clientesRFM: {{ clientes_rfm|default([])|tojson|safe }}, // Nuevo: Lista completa de clientes
                     heatmap: {{ heatmap_ventas|default([])|tojson|safe }},
+                    heatmapVendedores: {{ heatmap_vendedores|default([])|tojson|safe }},  // Lista de vendedores
+                    heatmapPorVendedor: {{ heatmap_por_vendedor|default({})|tojson|safe }},  // Datos por vendedor
                     mapa: {{ mapa_ventas_data|default([])|tojson|safe }},      // ANUAL
                     mes: '{{ mes_seleccionado }}',
                     dia: '{{ dia_actual }}',
-                    año: {{ año_seleccionado }}
+                    año: {{ año_seleccionado }},
+                    mesNombre: '{{ mes_nombre }}'
                 };
 
                 // 2. Funciones de Gráficos (ECharts & Chart.js)
@@ -1851,6 +1881,15 @@
                         })
                         .then(data => {
                             if (data.success && data.tendencia && data.tendencia.length > 0) {
+                                // Generar nuevos labels con el año siguiente
+                                const mesesNombres = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 
+                                                     'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
+                                const nuevosLabels = data.tendencia.map((d, index) => `${mesesNombres[index]} ${añoSiguiente}`);
+                                
+                                // Actualizar labels del gráfico para incluir ambos años
+                                const labelsOriginales = globalData.tendencia.map(d => `${d.mes_nombre} ${añoActual}`);
+                                window.chartTendencia.data.labels = labelsOriginales;
+                                
                                 // Agregar dataset del año siguiente
                                 const ventasSiguiente = data.tendencia.map(d => d.venta);
                                 window.chartTendencia.data.datasets.push({
@@ -1862,6 +1901,32 @@
                                     tension: 0.4,
                                     borderWidth: 2
                                 });
+                                
+                                // Configurar tooltip para mostrar ambos años correctamente
+                                window.chartTendencia.options.plugins.tooltip = {
+                                    callbacks: {
+                                        title: function(context) {
+                                            const index = context[0].dataIndex;
+                                            const mes = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 
+                                                        'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'][index];
+                                            return `${mes}`;
+                                        },
+                                        label: function(context) {
+                                            const datasetLabel = context.dataset.label || '';
+                                            const value = context.parsed.y;
+                                            const formattedValue = 'S/ ' + value.toLocaleString('es-PE', {minimumFractionDigits: 0, maximumFractionDigits: 0});
+                                            
+                                            // Agregar año al label si es un dataset de venta
+                                            if (datasetLabel.includes('Venta') && datasetLabel.includes(añoSiguiente.toString())) {
+                                                return `${datasetLabel}: ${formattedValue}`;
+                                            } else if (datasetLabel === 'Venta Real') {
+                                                return `Venta ${añoActual}: ${formattedValue}`;
+                                            }
+                                            return `${datasetLabel}: ${formattedValue}`;
+                                        }
+                                    }
+                                };
+                                
                                 window.chartTendencia.update();
                             } else {
                                 alert(`No hay datos disponibles para ${añoSiguiente}`);
@@ -1904,8 +1969,59 @@
                     window.chartRFM = new Chart(ctx, {
                         type: 'doughnut',
                         data: { labels: labels, datasets: [{ data: counts, backgroundColor: colores, borderColor: '#fff', borderWidth: 3 }] },
-                        options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
+                        options: { 
+                            responsive: true, 
+                            maintainAspectRatio: false, 
+                            plugins: { 
+                                legend: { 
+                                    position: 'bottom',
+                                    onClick: function(e, legendItem, legend) {
+                                        // Filtrar por segmento al hacer click en la leyenda
+                                        const segmentoSeleccionado = legendItem.text;
+                                        filtrarPorSegmentoRFM(segmentoSeleccionado);
+                                    }
+                                },
+                                tooltip: {
+                                    callbacks: {
+                                        label: function(context) {
+                                            const label = context.label || '';
+                                            const value = context.parsed || 0;
+                                            const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                            const percentage = ((value / total) * 100).toFixed(1);
+                                            return `${label}: ${value} (${percentage}%)`;
+                                        }
+                                    }
+                                }
+                            },
+                            // Hacer el gráfico clickeable
+                            onClick: function(evt, activeElements) {
+                                if (activeElements.length > 0) {
+                                    const index = activeElements[0].index;
+                                    const segmentoSeleccionado = labels[index];
+                                    filtrarPorSegmentoRFM(segmentoSeleccionado);
+                                }
+                            }
+                        }
                     });
+                }
+                
+                // Variable global para rastrear el segmento actualmente filtrado
+                window.segmentoRFMActivo = null;
+                
+                // Función para filtrar tabla por segmento RFM
+                function filtrarPorSegmentoRFM(segmento) {
+                    console.log(`🎯 Filtrando por segmento: ${segmento}`);
+                    
+                    // Si se hace click en el mismo segmento, deseleccionar
+                    if (window.segmentoRFMActivo === segmento) {
+                        window.segmentoRFMActivo = null;
+                        console.log('✖️ Deseleccionando segmento, mostrando todos');
+                    } else {
+                        window.segmentoRFMActivo = segmento;
+                    }
+                    
+                    // Re-ejecutar el filtro actual para aplicar el filtro de segmento
+                    filtrarRFMPorCanal();
                 }
 
                 // Función para filtrar RFM por canal
@@ -1959,11 +2075,22 @@
                         console.log(`🔍 Filtro grupo "${grupo}": ${antes} → ${clientesFiltrados.length} clientes`);
                     }
                     
+                    // Filtro por segmento RFM (si está activo)
+                    if (window.segmentoRFMActivo) {
+                        const antes = clientesFiltrados.length;
+                        clientesFiltrados = clientesFiltrados.filter(c => c.categoria === window.segmentoRFMActivo);
+                        console.log(`🎯 Filtro segmento "${window.segmentoRFMActivo}": ${antes} → ${clientesFiltrados.length} clientes`);
+                    }
+                    
                     // Actualizar título con info de grupo si está filtrado
                     let tituloFiltro = labels[canal] || '(Todos)';
                     let tituloGrafico = 'Distribución por Segmento';
                     
-                    if (grupo && grupo !== 'TODOS_GRUPOS') {
+                    // Agregar segmento al título si está activo
+                    if (window.segmentoRFMActivo) {
+                        tituloFiltro = `${tituloFiltro} - ${window.segmentoRFMActivo}`;
+                        tituloGrafico = `Segmento: ${window.segmentoRFMActivo}`;
+                    } else if (grupo && grupo !== 'TODOS_GRUPOS') {
                         tituloFiltro = `${labels[canal]} - ${grupo}`;
                         tituloGrafico = `Distribución por Segmento (${grupo})`;
                     } else if (canal !== 'TODOS') {
@@ -2041,12 +2168,14 @@
                     if (canvas && Object.keys(segmentos).length > 0) {
                         const ctx = canvas.getContext('2d');
                         const orden = ['Campeones', 'Leales', 'Potenciales', 'Nuevos', 'En Riesgo', 'Hibernando', 'Perdidos', 'Otros'];
-                        const labels = [], counts = [], colores = [];
+                        const labels = [], counts = [], colores = [], borderWidths = [];
                         orden.forEach(s => { 
                             if (segmentos[s]) { 
                                 labels.push(s); 
                                 counts.push(segmentos[s].count); 
-                                colores.push(segmentos[s].color); 
+                                colores.push(segmentos[s].color);
+                                // Resaltar segmento activo con borde más grueso
+                                borderWidths.push(window.segmentoRFMActivo === s ? 6 : 3);
                             } 
                         });
                         
@@ -2056,12 +2185,37 @@
                         
                         window.chartRFM = new Chart(ctx, {
                             type: 'doughnut',
-                            data: { labels: labels, datasets: [{ data: counts, backgroundColor: colores, borderColor: '#fff', borderWidth: 3 }] },
+                            data: { 
+                                labels: labels, 
+                                datasets: [{ 
+                                    data: counts, 
+                                    backgroundColor: colores, 
+                                    borderColor: '#fff', 
+                                    borderWidth: borderWidths // Array con diferentes anchos
+                                }] 
+                            },
                             options: { 
                                 responsive: true, 
                                 maintainAspectRatio: false, 
                                 plugins: { 
-                                    legend: { position: 'bottom' },
+                                    legend: { 
+                                        position: 'bottom',
+                                        labels: {
+                                            generateLabels: function(chart) {
+                                                const datasets = chart.data.datasets;
+                                                return chart.data.labels.map((label, i) => {
+                                                    const isActive = window.segmentoRFMActivo === label;
+                                                    return {
+                                                        text: isActive ? `✓ ${label}` : label,
+                                                        fillStyle: datasets[0].backgroundColor[i],
+                                                        hidden: false,
+                                                        index: i,
+                                                        fontStyle: isActive ? 'bold' : 'normal'
+                                                    };
+                                                });
+                                            }
+                                        }
+                                    },
                                     tooltip: {
                                         callbacks: {
                                             label: function(context) {
@@ -2136,16 +2290,107 @@
                 function crearGraficoHeatmapVentas() {
                     const chartDom = document.getElementById('graficoHeatmapVentas');
                     if (!chartDom || !globalData.heatmap || globalData.heatmap.length === 0) return;
+                    
+                    // Inicializar con datos de todos los vendedores
+                    window.vendedorHeatmapActivo = 'TODOS';
+                    
+                    // Poblar el select de vendedores
+                    const selectVendedor = document.getElementById('filtroVendedorHeatmap');
+                    if (selectVendedor && globalData.heatmapVendedores) {
+                        selectVendedor.innerHTML = '<option value="TODOS">📊 Todos los Vendedores</option>';
+                        globalData.heatmapVendedores.forEach(vendedor => {
+                            const option = document.createElement('option');
+                            option.value = vendedor.id;
+                            option.textContent = `${vendedor.nombre} (S/ ${vendedor.total_ventas.toLocaleString('es-PE', {minimumFractionDigits: 0})})`;
+                            selectVendedor.appendChild(option);
+                        });
+                    }
+                    
                     const myChart = echarts.init(chartDom);
+                    
+                    // Calcular suma total para mostrar en el título
+                    const sumaTotal = globalData.heatmap.reduce((sum, d) => sum + d.valor, 0);
+                    document.getElementById('mesHeatmapTitulo').innerHTML = `${globalData.mesNombre} ${globalData.año} <span style="font-size: 14px; color: #52c41a;">(Total: S/ ${sumaTotal.toLocaleString('es-PE', {minimumFractionDigits: 0})})</span>`;
+                    
                     const maxVal = Math.max(...globalData.heatmap.map(d => d.valor));
                     myChart.setOption({
-                        tooltip: { position: 'top', formatter: (p) => `Venta: S/ ${p.data[2].toLocaleString()}` },
+                        tooltip: { 
+                            position: 'top', 
+                            formatter: (p) => {
+                                const venta = p.data[2];
+                                return `<strong>Venta:</strong> S/ ${venta.toLocaleString('es-PE', {minimumFractionDigits: 0})}`;
+                            }
+                        },
                         grid: { height: '70%', top: '10%' },
                         xAxis: { type: 'category', data: ['Lun', 'Mar', 'Mié', 'Jue', 'Vie', 'Sáb', 'Dom'] },
                         yAxis: { type: 'category', data: ['Sem 1', 'Sem 2', 'Sem 3', 'Sem 4', 'Sem 5'] },
-                        visualMap: { min: 0, max: maxVal, calculable: true, orient: 'horizontal', left: 'center', bottom: '0%' },
-                        series: [{ type: 'heatmap', data: globalData.heatmap.map(item => [item.dia, item.semana, item.valor]) }]
+                        visualMap: { 
+                            min: 0, 
+                            max: maxVal, 
+                            calculable: true, 
+                            orient: 'horizontal', 
+                            left: 'center', 
+                            bottom: '0%',
+                            text: ['Alto', 'Bajo'],
+                            inRange: {
+                                color: ['#e8f5e9', '#66bb6a', '#2e7d32']
+                            }
+                        },
+                        series: [{ 
+                            type: 'heatmap', 
+                            data: globalData.heatmap.map(item => [item.dia, item.semana, item.valor]),
+                            label: {
+                                show: true,
+                                formatter: function(params) {
+                                    return params.value[2] > 0 ? 'S/ ' + (params.value[2] / 1000).toFixed(0) + 'K' : '';
+                                },
+                                fontSize: 10
+                            }
+                        }]
                     });
+                    
+                    // Guardar referencia al chart
+                    window.heatmapChart = myChart;
+                }
+                
+                function cambiarVendedorHeatmap() {
+                    const vendedorId = document.getElementById('filtroVendedorHeatmap').value;
+                    window.vendedorHeatmapActivo = vendedorId;
+                    
+                    console.log(`🔄 Cambiando heatmap a vendedor: ${vendedorId}`);
+                    
+                    // Obtener datos según vendedor seleccionado
+                    let datosHeatmap = [];
+                    if (vendedorId === 'TODOS') {
+                        datosHeatmap = globalData.heatmap;
+                    } else {
+                        datosHeatmap = globalData.heatmapPorVendedor[vendedorId] || [];
+                    }
+                    
+                    // Calcular suma total
+                    const sumaTotal = datosHeatmap.reduce((sum, d) => sum + d.valor, 0);
+                    const vendedorNombre = vendedorId === 'TODOS' ? 'Todos' : 
+                        globalData.heatmapVendedores.find(v => v.id === vendedorId)?.nombre || 'Vendedor';
+                    
+                    // Actualizar título
+                    document.getElementById('mesHeatmapTitulo').innerHTML = 
+                        `${globalData.mesNombre} ${globalData.año} - <span style="color: #875A7B;">${vendedorNombre}</span> ` +
+                        `<span style="font-size: 14px; color: #52c41a;">(Total: S/ ${sumaTotal.toLocaleString('es-PE', {minimumFractionDigits: 0})})</span>`;
+                    
+                    // Actualizar gráfico
+                    if (window.heatmapChart) {
+                        const maxVal = Math.max(...datosHeatmap.map(d => d.valor), 1);
+                        window.heatmapChart.setOption({
+                            visualMap: {
+                                max: maxVal
+                            },
+                            series: [{
+                                data: datosHeatmap.map(item => [item.dia, item.semana, item.valor])
+                            }]
+                        });
+                    }
+                    
+                    console.log(`✅ Heatmap actualizado - Total: S/ ${sumaTotal.toLocaleString()}`);
                 }
 
 

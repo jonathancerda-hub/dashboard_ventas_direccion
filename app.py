@@ -1348,6 +1348,11 @@ def dashboard():
         heatmap_data = [[0 for _ in range(7)] for _ in range(5)]  # 5 semanas x 7 días
         heatmap_count = [[0 for _ in range(7)] for _ in range(5)]  # Contador para promedios
         
+        # Rastrear vendedores y sus ventas
+        vendedores_heatmap = {}  # {vendedor_id: {nombre, total_ventas}}
+        heatmap_por_vendedor = {}  # {vendedor_id: [[ventas por día/semana]]}
+        ventas_sin_vendedor = 0
+        
         transacciones_procesadas = 0
         for sale in sales_data:
             invoice_date = sale.get('invoice_date')
@@ -1372,6 +1377,33 @@ def dashboard():
             if isinstance(balance, str):
                 balance = float(balance.replace(',', ''))
             
+            # Obtener información del vendedor
+            user_info = sale.get('invoice_user_id')
+            vendedor_id = None
+            vendedor_nombre = 'Sin asignar'
+            if user_info and isinstance(user_info, list) and len(user_info) >= 2:
+                vendedor_id_raw = str(user_info[0])
+                vendedor_nombre = user_info[1]
+                
+                # Si el ID es "0" (datos de Supabase), usar el nombre como ID único
+                if vendedor_id_raw == "0":
+                    vendedor_id = f"supabase_{vendedor_nombre.replace(' ', '_')}"
+                else:
+                    vendedor_id = vendedor_id_raw
+                
+                # Registrar vendedor
+                if vendedor_id not in vendedores_heatmap:
+                    vendedores_heatmap[vendedor_id] = {
+                        'nombre': vendedor_nombre,
+                        'total_ventas': 0
+                    }
+                    heatmap_por_vendedor[vendedor_id] = [[0 for _ in range(7)] for _ in range(5)]
+                    print(f"   📌 Nuevo vendedor detectado: {vendedor_nombre} (ID: {vendedor_id})")
+                
+                vendedores_heatmap[vendedor_id]['total_ventas'] += balance
+            else:
+                ventas_sin_vendedor += 1
+            
             # Día de la semana (0=Lunes, 6=Domingo)
             dia_semana = fecha_venta.weekday()
             
@@ -1381,6 +1413,11 @@ def dashboard():
             
             heatmap_data[semana_mes][dia_semana] += balance
             heatmap_count[semana_mes][dia_semana] += 1
+            
+            # Agregar a matriz del vendedor
+            if vendedor_id:
+                heatmap_por_vendedor[vendedor_id][semana_mes][dia_semana] += balance
+            
             transacciones_procesadas += 1
         
         # Preparar datos para el frontend (formato para ECharts heatmap)
@@ -1390,28 +1427,60 @@ def dashboard():
         
         max_venta_dia = 0
         celdas_activas = 0
+        total_ventas_mes = 0
+        
         for semana_idx in range(5):
             for dia_idx in range(7):
-                venta = heatmap_data[semana_idx][dia_idx]
+                venta_total = heatmap_data[semana_idx][dia_idx]
                 count = heatmap_count[semana_idx][dia_idx]
-                # Promedio de venta por día
-                venta_promedio = venta / count if count > 0 else 0
                 
                 if count > 0:
                     celdas_activas += 1
                 
+                total_ventas_mes += venta_total
+                
                 heatmap_ventas.append({
                     'semana': semana_idx,
                     'dia': dia_idx,
-                    'valor': venta_promedio,
-                    'total': venta,
+                    'valor': venta_total,  # Total de ventas del día (no promedio)
                     'transacciones': count
                 })
                 
-                if venta_promedio > max_venta_dia:
-                    max_venta_dia = venta_promedio
+                if venta_total > max_venta_dia:
+                    max_venta_dia = venta_total
         
-        print(f"🔥 Heatmap generado: {transacciones_procesadas} transacciones procesadas, {celdas_activas} celdas con actividad")
+        # Preparar lista de vendedores ordenada por ventas
+        lista_vendedores = [
+            {
+                'id': vid,
+                'nombre': vdata['nombre'],
+                'total_ventas': vdata['total_ventas']
+            }
+            for vid, vdata in vendedores_heatmap.items()
+        ]
+        lista_vendedores.sort(key=lambda x: x['total_ventas'], reverse=True)
+        
+        print(f"🔥 Heatmap generado: {transacciones_procesadas} transacciones, {celdas_activas} celdas activas")
+        print(f"🔥 Total ventas del mes: S/ {total_ventas_mes:,.0f} - {len(vendedores_heatmap)} vendedores")
+        print(f"🔥 Ventas sin vendedor asignado: {ventas_sin_vendedor}")
+        if vendedores_heatmap:
+            print(f"🔥 Vendedores detectados:")
+            for vid, vdata in sorted(vendedores_heatmap.items(), key=lambda x: x[1]['total_ventas'], reverse=True)[:5]:
+                print(f"   - {vdata['nombre']}: S/ {vdata['total_ventas']:,.0f}")
+        
+        # Preparar datos de heatmap por vendedor para el frontend
+        heatmap_vendedores_data = {}
+        for vendedor_id, matriz in heatmap_por_vendedor.items():
+            vendedor_heatmap = []
+            for semana_idx in range(5):
+                for dia_idx in range(7):
+                    venta_total = matriz[semana_idx][dia_idx]
+                    vendedor_heatmap.append({
+                        'semana': semana_idx,
+                        'dia': dia_idx,
+                        'valor': venta_total
+                    })
+            heatmap_vendedores_data[vendedor_id] = vendedor_heatmap
         
         # --- CLIENTES EN RIESGO ---
         print(f"⚠️ Identificando clientes en riesgo...")
@@ -1841,6 +1910,8 @@ def dashboard():
             'heatmap_ventas': heatmap_ventas,
             'heatmap_dias': dias_labels,
             'heatmap_semanas': semanas_labels,
+            'heatmap_vendedores': lista_vendedores,  # Lista de vendedores del mes
+            'heatmap_por_vendedor': heatmap_vendedores_data,  # Datos por vendedor
             'mapa_ventas_data': mapa_ventas_data,
             'datos_geograficos': datos_geograficos_sorted,  # Nuevo: Mapa geográfico
             'datos_productos': datos_productos,
