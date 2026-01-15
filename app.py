@@ -357,6 +357,59 @@ def api_tendencia():
         return jsonify({'error': str(e)}), 500
 
 
+@app.route('/api/rfm-canal', methods=['GET'])
+def api_rfm_canal():
+    """API para obtener análisis RFM filtrado por canal"""
+    if 'username' not in session:
+        return jsonify({'error': 'No autorizado'}), 401
+    
+    try:
+        canal_filtro = request.args.get('canal', 'TODOS').upper()
+        año = int(request.args.get('año', datetime.now().year))
+        mes = int(request.args.get('mes', datetime.now().month))
+        
+        print(f"📊 API RFM Canal: Solicitando datos para canal={canal_filtro}, año={año}, mes={mes}")
+        
+        # Obtener datos en caché o calcular
+        cached_data = get_cached_data(año, mes)
+        
+        if cached_data and 'clientes_rfm' in cached_data and 'segmentos_por_canal' in cached_data:
+            clientes_rfm = cached_data['clientes_rfm']
+            segmentos_por_canal = cached_data['segmentos_por_canal']
+            
+            # Filtrar según canal seleccionado
+            if canal_filtro == 'TODOS':
+                clientes_filtrados = clientes_rfm
+                segmentos_filtrados = segmentos_por_canal.get('TODOS', {})
+            elif canal_filtro in ['DIGITAL', 'NACIONAL', 'OTROS']:
+                clientes_filtrados = [c for c in clientes_rfm if c.get('canal', 'SIN CANAL') == canal_filtro or (canal_filtro == 'OTROS' and c.get('canal', 'SIN CANAL') not in ['DIGITAL', 'NACIONAL'])]
+                segmentos_filtrados = segmentos_por_canal.get(canal_filtro, {})
+            else:
+                clientes_filtrados = clientes_rfm
+                segmentos_filtrados = segmentos_por_canal.get('TODOS', {})
+            
+            # Ordenar y limitar a top 100
+            clientes_filtrados = sorted(clientes_filtrados, key=lambda x: x['monetary'], reverse=True)[:100]
+            
+            print(f"✅ API RFM Canal: {len(clientes_filtrados)} clientes filtrados para {canal_filtro}")
+            
+            return jsonify({
+                'success': True,
+                'canal': canal_filtro,
+                'clientes': clientes_filtrados,
+                'segmentos': segmentos_filtrados,
+                'total_clientes': len(clientes_filtrados)
+            })
+        else:
+            return jsonify({'error': 'Datos no disponibles en caché. Recargue el dashboard.'}), 404
+        
+    except Exception as e:
+        print(f"❌ Error en API RFM Canal: {e}")
+        import traceback
+        traceback.print_exc()
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/dashboard', methods=['GET', 'POST'])
 def dashboard():
     if 'username' not in session:
@@ -365,6 +418,15 @@ def dashboard():
     try:
         # --- Lógica de Permisos de Administrador ---
         is_admin = session.get('username') in ADMIN_USERS
+        
+        # --- Parámetro de Período RFM ---
+        periodo_rfm = request.args.get('periodo_rfm', '0')  # 0=YTD, 30/90/180/365=días
+        try:
+            periodo_rfm_dias = int(periodo_rfm)
+        except:
+            periodo_rfm_dias = 0
+        
+        print(f"📅 Período RFM seleccionado: {periodo_rfm_dias} días ({'YTD del mes' if periodo_rfm_dias == 0 else f'Últimos {periodo_rfm_dias} días'})")
 
         # Obtener año actual y año seleccionado
         fecha_actual = datetime.now()
@@ -443,6 +505,20 @@ def dashboard():
 
         fecha_inicio = f"{año_sel}-{mes_sel}-01"
         # --- FIN DE LA NUEVA LÓGICA ---
+        
+        # --- CALCULAR FECHAS PARA RFM SEGÚN PERÍODO ---
+        if periodo_rfm_dias == 0:
+            # YTD del mes: desde inicio del mes hasta fecha_fin
+            fecha_inicio_rfm = fecha_inicio
+            fecha_fin_rfm = fecha_fin
+            print(f"📅 RFM usando YTD del mes: {fecha_inicio_rfm} a {fecha_fin_rfm}")
+        else:
+            # Últimos N días desde fecha_fin
+            fecha_fin_obj = dt.strptime(fecha_fin, '%Y-%m-%d')
+            fecha_inicio_obj = fecha_fin_obj - timedelta(days=periodo_rfm_dias)
+            fecha_inicio_rfm = fecha_inicio_obj.strftime('%Y-%m-%d')
+            fecha_fin_rfm = fecha_fin
+            print(f"📅 RFM usando últimos {periodo_rfm_dias} días: {fecha_inicio_rfm} a {fecha_fin_rfm}")
 
         # Determinar fuente de datos
         data_source = get_data_source(año_sel_int)
@@ -771,21 +847,46 @@ def dashboard():
         print(f"📊 Frecuencia de compra: {len(datos_frecuencia_linea)-1} líneas comerciales procesadas")
         print(f"📊 Frecuencia general: {frecuencia_total:.2f} pedidos/cliente")
 
-        # --- ANÁLISIS RFM (Recency, Frequency, Monetary) ---
-        print(f"📈 Calculando análisis RFM de clientes...")
+        # --- ANÁLISIS RFM (Recency, Frequency, Monetary) CON SEGMENTACIÓN POR CANAL ---
+        print(f"📈 Calculando análisis RFM de clientes con filtro por canal...")
         
         from datetime import datetime as dt, timedelta
+        
+        # Filtrar sales_data para el período RFM seleccionado
+        fecha_inicio_rfm_obj = dt.strptime(fecha_inicio_rfm, '%Y-%m-%d')
+        fecha_fin_rfm_obj = dt.strptime(fecha_fin_rfm, '%Y-%m-%d')
+        
+        sales_data_rfm = []
+        for sale in sales_data:
+            invoice_date = sale.get('invoice_date')
+            if invoice_date:
+                if isinstance(invoice_date, str):
+                    try:
+                        fecha_venta = dt.strptime(invoice_date, '%Y-%m-%d')
+                    except:
+                        continue
+                else:
+                    fecha_venta = invoice_date
+                
+                # Filtrar solo ventas dentro del período RFM
+                if fecha_inicio_rfm_obj <= fecha_venta <= fecha_fin_rfm_obj:
+                    sales_data_rfm.append(sale)
+        
+        print(f"📊 Datos para RFM: {len(sales_data_rfm)} ventas en el período {fecha_inicio_rfm} a {fecha_fin_rfm} (de {len(sales_data)} totales)")
         
         # Diccionarios para almacenar datos RFM por cliente
         cliente_recency = {}  # Días desde última compra
         cliente_frequency = {}  # Número de pedidos
         cliente_monetary = {}  # Valor total de compras
         cliente_ultima_fecha = {}  # Fecha de última compra
+        cliente_canal = {}  # Canal de cada cliente (DIGITAL/NACIONAL)
+        cliente_grupo_venta = {}  # Grupo de venta específico (ECOMMERCE, DISTRIBUIDORES, etc.)
+        cliente_partner_id = {}  # ID de partner para obtener canal
         
-        # Calcular RFM para cada cliente
-        fecha_referencia = datetime.now()
+        # Calcular RFM para cada cliente usando datos del período RFM
+        fecha_referencia = fecha_fin_rfm_obj  # Usar fecha fin de RFM como referencia
         
-        for sale in sales_data:
+        for sale in sales_data_rfm:  # Usar sales_data_rfm en lugar de sales_data
             partner_name = sale.get('partner_name', '').strip()
             if not partner_name:
                 continue
@@ -795,6 +896,13 @@ def dashboard():
             if linea_comercial and isinstance(linea_comercial, list) and len(linea_comercial) > 1:
                 if 'VENTA INTERNACIONAL' in linea_comercial[1].upper():
                     continue
+            
+            # Guardar partner_id para obtener el canal después
+            partner_id = sale.get('partner_id')
+            if partner_id:
+                if isinstance(partner_id, list):
+                    partner_id = partner_id[0]
+                cliente_partner_id[partner_name] = partner_id
             
             balance = sale.get('balance', 0)
             if isinstance(balance, str):
@@ -832,34 +940,272 @@ def dashboard():
             dias = (fecha_referencia - ultima_fecha).days
             cliente_recency[partner_name] = dias
         
+        # OBTENER GRUPOS DE VENTA DESDE ODOO PARA TODOS LOS AÑOS (incluye Supabase)
+        # Los grupos están en Odoo y son consistentes para todos los períodos
+        print(f"🔄 Obteniendo grupos de venta desde Odoo para clasificación...")
+        
+        try:
+            # Lista de partner_ids únicos
+            partner_ids_list = list(set(cliente_partner_id.values()))
+            
+            if partner_ids_list:
+                # Consultar res.partner para obtener groups_ids
+                partners_info = data_manager.models.execute_kw(
+                    data_manager.db, data_manager.uid, data_manager.password,
+                    'res.partner', 'search_read',
+                    [[('id', 'in', partner_ids_list)]],
+                    {'fields': ['id', 'name', 'groups_ids']}
+                )
+                
+                # Consultar agr.groups para obtener nombres
+                groups_data = data_manager.models.execute_kw(
+                    data_manager.db, data_manager.uid, data_manager.password,
+                    'agr.groups', 'search_read',
+                    [[]],
+                    {'fields': ['id', 'name']}
+                )
+                
+                # Mapear group_id -> nombre
+                group_name_map = {g['id']: g['name'] for g in groups_data}
+                
+                # Mapear partner_id -> canal y grupo
+                partner_canal_map = {}
+                partner_grupo_map = {}
+                canales_encontrados = {'DIGITAL': 0, 'NACIONAL': 0}
+                grupos_sin_asignar = 0
+                
+                for partner in partners_info:
+                    groups_ids = partner.get('groups_ids', [])
+                    canal = 'NACIONAL'  # Default: NACIONAL
+                    grupo_venta = 'SIN GRUPO'
+                    
+                    if groups_ids:
+                        # Tomar el primer grupo
+                        first_group_id = groups_ids[0]
+                        grupo_venta = group_name_map.get(first_group_id, 'SIN GRUPO')
+                        
+                        # Clasificar en DIGITAL o NACIONAL según el nombre del grupo
+                        if grupo_venta.upper() in ['ECOMMERCE', 'AIRBNB', 'EMPLEADOS']:
+                            canal = 'DIGITAL'
+                        else:
+                            canal = 'NACIONAL'
+                    else:
+                        grupos_sin_asignar += 1
+                    
+                    partner_canal_map[partner['id']] = canal
+                    partner_grupo_map[partner['id']] = grupo_venta
+                    canales_encontrados[canal] = canales_encontrados.get(canal, 0) + 1
+                
+                # Asignar canal y grupo a cada cliente
+                for partner_name, partner_id in cliente_partner_id.items():
+                    canal = partner_canal_map.get(partner_id, 'NACIONAL')
+                    grupo = partner_grupo_map.get(partner_id, 'SIN GRUPO')
+                    cliente_canal[partner_name] = canal
+                    cliente_grupo_venta[partner_name] = grupo
+                
+                # Debug
+                grupos_ejemplo = list(set(partner_grupo_map.values()))[:10]
+                print(f"📋 Ejemplos de grupos encontrados: {grupos_ejemplo}")
+                print(f"⚠️ Clientes SIN GRUPO asignado: {grupos_sin_asignar}")
+                print(f"✅ Grupos de venta asignados desde Odoo:")
+                print(f"   - DIGITAL: {canales_encontrados['DIGITAL']} clientes")
+                print(f"   - NACIONAL: {canales_encontrados['NACIONAL']} clientes")
+            else:
+                print("⚠️ No se encontraron partner_ids para consultar grupos")
+                
+        except Exception as e:
+            print(f"⚠️ Error obteniendo grupos desde Odoo: {e}")
+            # Si falla, usar valores por defecto
+            for partner_name in cliente_partner_id.keys():
+                if partner_name not in cliente_canal:
+                    cliente_canal[partner_name] = 'NACIONAL'
+                if partner_name not in cliente_grupo_venta:
+                    cliente_grupo_venta[partner_name] = 'SIN GRUPO'
+
+        # Obtener canal de cada cliente según la fuente de datos
+        print(f"🔍 Obteniendo canal de {len(cliente_partner_id)} clientes...")
+        
+        if año_seleccionado >= 2026 and cliente_partner_id:
+            # Para Odoo (2026+), obtener grupo de venta desde res.partner.groups_ids
+            try:
+                partner_ids_list = list(set(cliente_partner_id.values()))
+                
+                # Consultar partners con sus grupos
+                partners_info = data_manager.models.execute_kw(
+                    data_manager.db, data_manager.uid, data_manager.password,
+                    'res.partner', 'search_read',
+                    [[('id', 'in', partner_ids_list)]],
+                    {'fields': ['id', 'name', 'groups_ids'], 'context': {'lang': 'es_PE'}}
+                )
+                
+                # Obtener nombres de todos los grupos
+                groups_data = data_manager.models.execute_kw(
+                    data_manager.db, data_manager.uid, data_manager.password,
+                    'agr.groups', 'search_read',
+                    [[]],
+                    {'fields': ['id', 'name']}
+                )
+                
+                # Mapear group_id -> nombre
+                group_name_map = {g['id']: g['name'] for g in groups_data}
+                
+                # Mapear partner_id -> canal y grupo
+                partner_canal_map = {}
+                partner_grupo_map = {}  # Mapeo partner_id -> nombre grupo de venta
+                canales_encontrados = {'DIGITAL': 0, 'NACIONAL': 0}
+                grupos_sin_asignar = 0  # Contador de clientes sin grupo
+                
+                for partner in partners_info:
+                    groups_ids = partner.get('groups_ids', [])
+                    canal = 'NACIONAL'  # Default: NACIONAL
+                    grupo_venta = 'SIN GRUPO'
+                    
+                    if groups_ids:
+                        # Tomar el primer grupo (un cliente puede tener múltiples grupos)
+                        first_group_id = groups_ids[0]
+                        grupo_venta = group_name_map.get(first_group_id, 'SIN GRUPO')
+                        
+                        # Clasificar en DIGITAL o NACIONAL según el nombre del grupo
+                        if grupo_venta.upper() in ['ECOMMERCE', 'AIRBNB', 'EMPLEADOS']:
+                            canal = 'DIGITAL'
+                        else:
+                            canal = 'NACIONAL'
+                    else:
+                        grupos_sin_asignar += 1
+                    
+                    partner_canal_map[partner['id']] = canal
+                    partner_grupo_map[partner['id']] = grupo_venta
+                    canales_encontrados[canal] = canales_encontrados.get(canal, 0) + 1
+                
+                # Asignar canal y grupo a cada cliente
+                for partner_name, partner_id in cliente_partner_id.items():
+                    canal = partner_canal_map.get(partner_id, 'NACIONAL')
+                    grupo = partner_grupo_map.get(partner_id, 'SIN GRUPO')
+                    cliente_canal[partner_name] = canal
+                    cliente_grupo_venta[partner_name] = grupo
+                
+                # Debug: Mostrar algunos ejemplos de grupos
+                grupos_ejemplo = list(set(partner_grupo_map.values()))[:10]
+                print(f"📋 Ejemplos de grupos encontrados: {grupos_ejemplo}")
+                print(f"⚠️ Clientes SIN GRUPO asignado en Odoo: {grupos_sin_asignar}")
+                
+                print(f"✅ Grupos de venta asignados desde Odoo (agr.groups):")
+                print(f"   - DIGITAL: {canales_encontrados['DIGITAL']} clientes")
+                print(f"   - NACIONAL: {canales_encontrados['NACIONAL']} clientes")
+            except Exception as e:
+                print(f"⚠️ Error obteniendo canales de Odoo: {e}")
+                # Si falla, asignar 'NACIONAL' a los que no tienen
+                for partner_name in cliente_partner_id.keys():
+                    if partner_name not in cliente_canal:
+                        cliente_canal[partner_name] = 'NACIONAL'
+                    if partner_name not in cliente_grupo_venta:
+                        cliente_grupo_venta[partner_name] = 'SIN GRUPO'
+        
+        # Separar clientes por canal para calcular percentiles independientes
+        clientes_digital = {k: v for k, v in cliente_monetary.items() if cliente_canal.get(k, '').upper() == 'DIGITAL'}
+        clientes_nacional = {k: v for k, v in cliente_monetary.items() if cliente_canal.get(k, '').upper() == 'NACIONAL'}
+        clientes_otros = {k: v for k, v in cliente_monetary.items() if cliente_canal.get(k, '').upper() not in ['DIGITAL', 'NACIONAL']}
+        
+        print(f"📊 Distribución: {len(clientes_digital)} DIGITAL, {len(clientes_nacional)} NACIONAL, {len(clientes_otros)} OTROS")
+        
+        # Calcular factor de ajuste para umbrales según período
+        # Umbrales base diseñados para ~30 días (mes completo)
+        # Períodos: 0=YTD (~15 días promedio), 30, 90, 180, 365
+        if periodo_rfm_dias == 0:
+            # YTD del mes: asumir ~15 días promedio
+            factor_recency = 0.5  # La mitad del mes
+            factor_frequency = 0.5
+        else:
+            # Escalar proporcionalmente al período de 30 días
+            factor_recency = periodo_rfm_dias / 30.0
+            factor_frequency = periodo_rfm_dias / 30.0
+        
+        print(f"📏 Factores de ajuste de umbrales: Recency={factor_recency:.2f}x, Frequency={factor_frequency:.2f}x")
+        
         # Crear lista de clientes con sus métricas RFM
         clientes_rfm = []
         for partner_name in cliente_monetary.keys():
             recency = cliente_recency.get(partner_name, 999)
             frequency = len(cliente_frequency.get(partner_name, set()))
             monetary = cliente_monetary.get(partner_name, 0)
+            canal = cliente_canal.get(partner_name, 'SIN CANAL')
             
-            # Calcular scores RFM (1-3, donde 3 es mejor)
-            # Recency: menor es mejor
-            if recency <= 30:
-                r_score = 3
-            elif recency <= 60:
-                r_score = 2
+            # Calcular scores RFM (1-3, donde 3 es mejor) CON UMBRALES DIFERENCIADOS POR CANAL Y AJUSTADOS POR PERÍODO
+            
+            # RECENCY: menor es mejor (días desde última compra) - Ajustado por período
+            if canal == 'DIGITAL':
+                # Clientes digitales: compras más frecuentes esperadas
+                umbral_r3 = int(20 * factor_recency)
+                umbral_r2 = int(45 * factor_recency)
+                if recency <= umbral_r3:
+                    r_score = 3
+                elif recency <= umbral_r2:
+                    r_score = 2
+                else:
+                    r_score = 1
+            elif canal == 'NACIONAL':
+                # Distribuidores: ciclos de compra más largos
+                umbral_r3 = int(60 * factor_recency)
+                umbral_r2 = int(120 * factor_recency)
+                if recency <= umbral_r3:
+                    r_score = 3
+                elif recency <= umbral_r2:
+                    r_score = 2
+                else:
+                    r_score = 1
             else:
-                r_score = 1
+                # Canal no identificado: umbrales intermedios
+                umbral_r3 = int(30 * factor_recency)
+                umbral_r2 = int(60 * factor_recency)
+                if recency <= umbral_r3:
+                    r_score = 3
+                elif recency <= umbral_r2:
+                    r_score = 2
+                else:
+                    r_score = 1
             
-            # Frequency: mayor es mejor
-            if frequency >= 3:
-                f_score = 3
-            elif frequency >= 2:
-                f_score = 2
+            # FREQUENCY: mayor es mejor (número de pedidos en el período) - Ajustado por período
+            if canal == 'DIGITAL':
+                # Clientes digitales: se espera mayor frecuencia
+                umbral_f3 = max(1, int(4 * factor_frequency))
+                umbral_f2 = max(1, int(2 * factor_frequency))
+                if frequency >= umbral_f3:
+                    f_score = 3
+                elif frequency >= umbral_f2:
+                    f_score = 2
+                else:
+                    f_score = 1
+            elif canal == 'NACIONAL':
+                # Distribuidores: menor frecuencia pero pedidos grandes
+                umbral_f3 = max(1, int(2 * factor_frequency))
+                umbral_f2 = 1
+                if frequency >= umbral_f3:
+                    f_score = 3
+                elif frequency >= umbral_f2:
+                    f_score = 2
+                else:
+                    f_score = 1
             else:
-                f_score = 1
+                # Canal no identificado: umbrales intermedios
+                umbral_f3 = max(1, int(3 * factor_frequency))
+                umbral_f2 = max(1, int(2 * factor_frequency))
+                if frequency >= umbral_f3:
+                    f_score = 3
+                elif frequency >= umbral_f2:
+                    f_score = 2
+                else:
+                    f_score = 1
             
-            # Monetary: mayor es mejor
-            valores_sorted = sorted([v for v in cliente_monetary.values()], reverse=True)
-            percentil_33 = valores_sorted[len(valores_sorted) // 3] if len(valores_sorted) >= 3 else 0
-            percentil_66 = valores_sorted[len(valores_sorted) * 2 // 3] if len(valores_sorted) >= 3 else 0
+            # MONETARY: mayor es mejor (calcular por canal para comparación justa)
+            if canal == 'DIGITAL' and clientes_digital:
+                valores_canal = sorted([v for v in clientes_digital.values()], reverse=True)
+            elif canal == 'NACIONAL' and clientes_nacional:
+                valores_canal = sorted([v for v in clientes_nacional.values()], reverse=True)
+            else:
+                valores_canal = sorted([v for v in cliente_monetary.values()], reverse=True)
+            
+            percentil_33 = valores_canal[len(valores_canal) // 3] if len(valores_canal) >= 3 else 0
+            percentil_66 = valores_canal[len(valores_canal) * 2 // 3] if len(valores_canal) >= 3 else 0
             
             if monetary >= percentil_33:
                 m_score = 3
@@ -899,6 +1245,8 @@ def dashboard():
             
             clientes_rfm.append({
                 'cliente': partner_name,
+                'canal': canal,
+                'grupo': cliente_grupo_venta.get(partner_name, 'SIN GRUPO'),
                 'recency': recency,
                 'frequency': frequency,
                 'monetary': monetary,
@@ -922,7 +1270,29 @@ def dashboard():
             segmentos_rfm[cat]['count'] += 1
             segmentos_rfm[cat]['valor'] += cliente['monetary']
         
+        # Estadísticas por canal
+        segmentos_por_canal = {
+            'DIGITAL': {},
+            'NACIONAL': {},
+            'OTROS': {},
+            'TODOS': segmentos_rfm
+        }
+        
+        for cliente in clientes_rfm:
+            canal_tipo = cliente['canal']
+            if canal_tipo not in ['DIGITAL', 'NACIONAL']:
+                canal_tipo = 'OTROS'
+            
+            cat = cliente['categoria']
+            if cat not in segmentos_por_canal[canal_tipo]:
+                segmentos_por_canal[canal_tipo][cat] = {'count': 0, 'valor': 0, 'color': cliente['color']}
+            segmentos_por_canal[canal_tipo][cat]['count'] += 1
+            segmentos_por_canal[canal_tipo][cat]['valor'] += cliente['monetary']
+        
         print(f"📊 Análisis RFM: {len(clientes_rfm)} clientes segmentados en {len(segmentos_rfm)} categorías")
+        print(f"   - DIGITAL: {len(clientes_digital)} clientes")
+        print(f"   - NACIONAL: {len(clientes_nacional)} clientes")
+        print(f"   - OTROS: {len(clientes_otros)} clientes")
         
 
         # --- TENDENCIA HISTÓRICA (12 MESES DEL AÑO SELECCIONADO) ---
@@ -1465,6 +1835,7 @@ def dashboard():
             'datos_frecuencia_linea': datos_frecuencia_linea,
             'clientes_rfm': clientes_rfm_sorted[:100],  # Top 100 clientes
             'segmentos_rfm': segmentos_rfm,
+            'segmentos_por_canal': segmentos_por_canal,  # Nuevo: Segmentos RFM por canal
             'tendencia_12_meses': tendencia_12_meses,
             'clientes_riesgo': clientes_riesgo_sorted,
             'heatmap_ventas': heatmap_ventas,

@@ -48,6 +48,10 @@ debug_*.py
 fix_*.py
 *_temp.py
 *_test.py
+
+# Documentación de contexto del proyecto (contiene información sensible del desarrollo)
+PROJECT_CONTEXT.md
+PROJECT_CONTEXT_backup_*.md
 comparar_*.py
 verificar_*.py
 analizar_*.py

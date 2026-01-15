@@ -1,0 +1,1079 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Manual de Gráficos e Indicadores - Dashboard Ventas AMAH</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+            line-height: 1.6;
+            color: #333;
+            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            padding: 20px;
+        }
+
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            background: white;
+            padding: 40px;
+            border-radius: 10px;
+            box-shadow: 0 10px 40px rgba(0,0,0,0.1);
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 50px;
+            padding-bottom: 30px;
+            border-bottom: 3px solid #875A7B;
+        }
+
+        h1 {
+            color: #875A7B;
+            font-size: 2.5em;
+            margin-bottom: 10px;
+        }
+
+        .subtitle {
+            color: #666;
+            font-size: 1.1em;
+        }
+
+        .toc {
+            background: #f8f9fa;
+            padding: 25px;
+            border-radius: 8px;
+            margin-bottom: 40px;
+            border-left: 4px solid #875A7B;
+        }
+
+        .toc h2 {
+            color: #875A7B;
+            margin-bottom: 15px;
+        }
+
+        .toc ul {
+            list-style: none;
+        }
+
+        .toc li {
+            margin: 10px 0;
+        }
+
+        .toc a {
+            color: #1890ff;
+            text-decoration: none;
+            transition: color 0.3s;
+        }
+
+        .toc a:hover {
+            color: #875A7B;
+        }
+
+        .section {
+            margin-bottom: 60px;
+            padding: 30px;
+            background: #fafafa;
+            border-radius: 8px;
+            border: 1px solid #e0e0e0;
+        }
+
+        .section h2 {
+            color: #875A7B;
+            margin-bottom: 20px;
+            padding-bottom: 10px;
+            border-bottom: 2px solid #875A7B;
+            font-size: 1.8em;
+        }
+
+        .indicator {
+            background: white;
+            padding: 25px;
+            margin: 25px 0;
+            border-radius: 8px;
+            border-left: 5px solid #875A7B;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.08);
+        }
+
+        .indicator h3 {
+            color: #875A7B;
+            margin-bottom: 15px;
+            font-size: 1.5em;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+        }
+
+        .indicator-icon {
+            font-size: 1.8em;
+        }
+
+        .info-grid {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 20px;
+            margin-top: 20px;
+        }
+
+        .info-card {
+            background: #f8f9fa;
+            padding: 15px;
+            border-radius: 6px;
+            border-left: 3px solid #1890ff;
+        }
+
+        .info-card h4 {
+            color: #1890ff;
+            margin-bottom: 10px;
+            font-size: 1.1em;
+        }
+
+        .info-card p, .info-card ul {
+            color: #555;
+            font-size: 0.95em;
+        }
+
+        .info-card ul {
+            list-style-position: inside;
+            margin-top: 8px;
+        }
+
+        .info-card li {
+            margin: 5px 0;
+        }
+
+        .formula {
+            background: #fff3cd;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 15px 0;
+            font-family: 'Courier New', monospace;
+            border-left: 4px solid #faad14;
+        }
+
+        .formula-title {
+            color: #856404;
+            font-weight: bold;
+            margin-bottom: 8px;
+        }
+
+        .formula-content {
+            color: #333;
+            font-size: 1.05em;
+        }
+
+        .interpretation {
+            background: #d1ecf1;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 15px 0;
+            border-left: 4px solid #0c5460;
+        }
+
+        .interpretation-title {
+            color: #0c5460;
+            font-weight: bold;
+            margin-bottom: 8px;
+        }
+
+        .threshold {
+            display: inline-block;
+            padding: 5px 12px;
+            margin: 5px;
+            border-radius: 20px;
+            font-size: 0.9em;
+            font-weight: bold;
+        }
+
+        .threshold-danger { background: #ff4d4f; color: white; }
+        .threshold-warning { background: #faad14; color: white; }
+        .threshold-success { background: #52c41a; color: white; }
+        .threshold-info { background: #1890ff; color: white; }
+
+        .data-source {
+            background: #e6f7ff;
+            padding: 12px;
+            border-radius: 6px;
+            margin: 15px 0;
+            border-left: 4px solid #1890ff;
+            font-size: 0.95em;
+        }
+
+        .code-block {
+            background: #2d2d2d;
+            color: #f8f8f2;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 15px 0;
+            overflow-x: auto;
+            font-family: 'Courier New', monospace;
+            font-size: 0.9em;
+        }
+
+        .note {
+            background: #fff3cd;
+            padding: 15px;
+            border-radius: 6px;
+            margin: 15px 0;
+            border-left: 4px solid #faad14;
+        }
+
+        .note-title {
+            color: #856404;
+            font-weight: bold;
+            margin-bottom: 8px;
+        }
+
+        footer {
+            text-align: center;
+            margin-top: 50px;
+            padding-top: 30px;
+            border-top: 2px solid #e0e0e0;
+            color: #666;
+        }
+
+        @media print {
+            body {
+                background: white;
+            }
+            .container {
+                box-shadow: none;
+            }
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <header>
+            <h1>📊 Manual de Gráficos e Indicadores</h1>
+            <p class="subtitle">Dashboard de Ventas Farmacéuticas - AMAH</p>
+            <p class="subtitle">Versión 3.0 | Enero 2026</p>
+        </header>
+
+        <div class="toc">
+            <h2>📑 Tabla de Contenidos</h2>
+            <ul>
+                <li><a href="#kpis">1. KPIs Principales</a></li>
+                <li><a href="#ventas-linea">2. Ventas por Línea Comercial</a></li>
+                <li><a href="#cobertura">3. Cobertura de Clientes</a></li>
+                <li><a href="#frecuencia">4. Frecuencia de Compra</a></li>
+                <li><a href="#mapa">5. Mapa Geográfico de Penetración</a></li>
+                <li><a href="#tendencia">6. Tendencia Histórica (12 Meses)</a></li>
+                <li><a href="#rfm">7. Análisis RFM (Segmentación de Clientes)</a></li>
+                <li><a href="#heatmap">8. Heatmap de Actividad de Ventas</a></li>
+                <li><a href="#ciclo-vida">9. Ciclo de Vida de Productos</a></li>
+                <li><a href="#productos-top">10. Top 10 Productos</a></li>
+            </ul>
+        </div>
+
+        <!-- SECCIÓN 1: KPIs PRINCIPALES -->
+        <div class="section" id="kpis">
+            <h2>1. KPIs Principales</h2>
+
+            <div class="indicator">
+                <h3><span class="indicator-icon">🎯</span> Meta Total vs Venta Total</h3>
+                
+                <div class="info-grid">
+                    <div class="info-card">
+                        <h4>📋 Descripción</h4>
+                        <p>Compara la venta real acumulada contra la meta establecida para el período seleccionado. Es el indicador principal del cumplimiento comercial.</p>
+                    </div>
+                    
+                    <div class="info-card">
+                        <h4>🎯 Objetivo</h4>
+                        <p>Alcanzar o superar el 100% de la meta mensual. El objetivo ideal es mantener ≥100% durante todo el año.</p>
+                    </div>
+                </div>
+
+                <div class="formula">
+                    <div class="formula-title">📐 Fórmula:</div>
+                    <div class="formula-content">
+                        % Avance = (Venta Total / Meta Total) × 100
+                    </div>
+                </div>
+
+                <div class="data-source">
+                    <strong>📊 Fuente de Datos:</strong><br>
+                    • <strong>Venta Total:</strong> Suma de campo <code>balance</code> de tabla <code>account.move.line</code> (Odoo) o <code>sales_data_2025</code> (Supabase)<br>
+                    • <strong>Meta Total:</strong> Google Sheets <code>MetasDashboardVentas</code>, suma de todas las líneas comerciales para el mes<br>
+                    • <strong>Filtros aplicados:</strong> Estado = 'posted', Tipo = factura/nota crédito, Canal ≠ Internacional, Impuesto contiene 'IGV'
+                </div>
+
+                <div class="interpretation">
+                    <div class="interpretation-title">📊 Interpretación de Umbrales:</div>
+                    <div>
+                        <span class="threshold threshold-danger">< 85%: Crítico</span>
+                        <span class="threshold threshold-warning">85-95%: Bajo Meta</span>
+                        <span class="threshold threshold-info">95-100%: Cerca de Meta</span>
+                        <span class="threshold threshold-success">≥ 100%: Meta Alcanzada</span>
+                    </div>
+                </div>
+
+                <div class="note">
+                    <div class="note-title">💡 Nota Importante:</div>
+                    También se muestra el <strong>Avance Lineal</strong> calculado como: <code>(Día Actual / Días del Mes) × 100</code>. 
+                    Esto permite comparar si el ritmo de ventas es adecuado para cumplir la meta al finalizar el mes.
+                </div>
+            </div>
+
+            <div class="indicator">
+                <h3><span class="indicator-icon">🆕</span> Productos Nuevos (IPN)</h3>
+                
+                <div class="info-grid">
+                    <div class="info-card">
+                        <h4>📋 Descripción</h4>
+                        <p>Mide la penetración de productos nuevos (Introducción de Productos Nuevos) en el portafolio de ventas.</p>
+                    </div>
+                    
+                    <div class="info-card">
+                        <h4>🎯 Objetivo</h4>
+                        <p>Meta IPN = 15% de la meta total. Se busca impulsar la adopción de nuevos productos para renovar el portafolio.</p>
+                    </div>
+                </div>
+
+                <div class="formula">
+                    <div class="formula-title">📐 Fórmulas:</div>
+                    <div class="formula-content">
+                        Meta IPN = Meta Total × 0.15<br>
+                        Venta IPN = Suma de ventas donde product_life_cycle = 'nuevo'<br>
+                        % Avance IPN = (Venta IPN / Meta IPN) × 100
+                    </div>
+                </div>
+
+                <div class="data-source">
+                    <strong>📊 Fuente de Datos:</strong><br>
+                    • Campo <code>product_life_cycle</code> en tabla <code>product.product</code><br>
+                    • Se filtran ventas donde <code>product_life_cycle = 'nuevo'</code><br>
+                    • Meta IPN se calcula automáticamente como 15% de la meta total
+                </div>
+
+                <div class="interpretation">
+                    <div class="interpretation-title">📊 Interpretación de Umbrales:</div>
+                    <div>
+                        <span class="threshold threshold-danger">< 50%: Bajo</span>
+                        <span class="threshold threshold-warning">50-80%: Regular</span>
+                        <span class="threshold threshold-success">≥ 80%: Bueno</span>
+                    </div>
+                </div>
+            </div>
+
+            <div class="indicator">
+                <h3><span class="indicator-icon">📉</span> Brecha Comercial</h3>
+                
+                <div class="info-grid">
+                    <div class="info-card">
+                        <h4>📋 Descripción</h4>
+                        <p>Diferencia monetaria entre la meta y la venta actual. Indica cuánto falta vender para cumplir el objetivo.</p>
+                    </div>
+                    
+                    <div class="info-card">
+                        <h4>🎯 Objetivo</h4>
+                        <p>Tender a 0 al final del período. Durante el mes se calcula el ritmo diario necesario para cerrar esta brecha.</p>
+                    </div>
+                </div>
+
+                <div class="formula">
+                    <div class="formula-title">📐 Fórmulas:</div>
+                    <div class="formula-content">
+                        Brecha = Meta Total - Venta Total<br>
+                        Ritmo Diario Necesario = Brecha / Días Laborables Restantes<br>
+                        (Días laborables: Lunes a Sábado)
+                    </div>
+                </div>
+
+                <div class="note">
+                    <div class="note-title">💡 Uso Estratégico:</div>
+                    El ritmo diario permite a los gerentes y vendedores saber exactamente cuánto deben vender cada día para cumplir la meta. 
+                    Si el ritmo requerido es muy alto, puede indicar necesidad de estrategias comerciales adicionales.
+                </div>
+            </div>
+        </div>
+
+        <!-- SECCIÓN 2: VENTAS POR LÍNEA COMERCIAL -->
+        <div class="section" id="ventas-linea">
+            <h2>2. Gráfico de Ventas por Línea Comercial</h2>
+
+            <div class="indicator">
+                <h3><span class="indicator-icon">📊</span> Gráfico de Líneas Múltiples</h3>
+                
+                <div class="info-grid">
+                    <div class="info-card">
+                        <h4>📋 Descripción</h4>
+                        <p>Visualización que compara tres métricas clave por línea comercial: Venta Real, Meta Asignada y Venta IPN.</p>
+                    </div>
+                    
+                    <div class="info-card">
+                        <h4>🎯 Objetivo</h4>
+                        <p>Identificar qué líneas comerciales están sobre/bajo rendimiento y analizar la distribución del negocio.</p>
+                    </div>
+                </div>
+
+                <div class="data-source">
+                    <strong>📊 Fuente de Datos:</strong><br>
+                    • <strong>Línea Comercial:</strong> Campo <code>commercial_line_national_id</code> de <code>product.product</code><br>
+                    • <strong>Normalización:</strong> GENVET y MARCA BLANCA se agrupan como "TERCEROS"<br>
+                    • <strong>Venta Real:</strong> Suma de <code>balance</code> agrupada por línea<br>
+                    • <strong>Meta:</strong> Desde Google Sheets por línea comercial<br>
+                    • <strong>Venta IPN:</strong> Ventas de productos con <code>product_life_cycle = 'nuevo'</code>
+                </div>
+
+                <div class="code-block">
+# Normalización de líneas comerciales
+if 'GENVET' in nombre_linea or 'MARCA BLANCA' in nombre_linea:
+    return 'TERCEROS'
+return nombre_linea
+                </div>
+
+                <div class="interpretation">
+                    <div class="interpretation-title">📊 Cómo Leer el Gráfico:</div>
+                    <ul>
+                        <li><strong>Línea Morada (Venta Real):</strong> Ventas efectivas por línea</li>
+                        <li><strong>Línea Amarilla (Meta):</strong> Objetivo asignado a cada línea</li>
+                        <li><strong>Línea Verde (IPN):</strong> Ventas de productos nuevos por línea</li>
+                    </ul>
+                    <p style="margin-top: 10px;"><strong>Análisis:</strong> Las líneas que superan su meta muestran la línea morada por encima de la amarilla. La distancia entre ambas indica el nivel de sobre/bajo cumplimiento.</p>
+                </div>
+            </div>
+
+            <div class="indicator">
+                <h3><span class="indicator-icon">📋</span> Tabla Detallada de Ventas por Línea</h3>
+                
+                <p><strong>Columnas incluidas:</strong></p>
+                <ul style="margin-left: 20px; margin-top: 10px;">
+                    <li><strong>Línea Comercial:</strong> Nombre de la línea de productos</li>
+                    <li><strong>Venta PN:</strong> Ventas de productos nuevos (IPN)</li>
+                    <li><strong>% Meta:</strong> Porcentaje de la meta total que representa esta línea</li>
+                    <li><strong>Meta:</strong> Monto objetivo para la línea</li>
+                    <li><strong>Venta:</strong> Venta real acumulada</li>
+                    <li><strong>% Avance:</strong> (Venta / Meta) × 100</li>
+                    <li><strong>% IPN:</strong> (Venta PN / Venta) × 100</li>
+                    <li><strong>Meta IPN:</strong> 15% de la meta de la línea</li>
+                    <li><strong>Venta Ruta 18/19:</strong> Ventas con route_id = 18 o 19 (fabricación por pedido)</li>
+                </ul>
+
+                <div class="note" style="margin-top: 20px;">
+                    <div class="note-title">💡 Uso en Gestión Comercial:</div>
+                    Esta tabla permite identificar rápidamente líneas problemáticas (bajo % Avance) o con alto potencial (sobrecumplimiento). 
+                    También muestra si los productos nuevos están teniendo buena adopción (% IPN alto).
+                </div>
+            </div>
+        </div>
+
+        <!-- SECCIÓN 3: COBERTURA DE CLIENTES -->
+        <div class="section" id="cobertura">
+            <h2>3. Cobertura de Clientes</h2>
+
+            <div class="indicator">
+                <h3><span class="indicator-icon">🎯</span> Gauge de Cobertura General</h3>
+                
+                <div class="info-grid">
+                    <div class="info-card">
+                        <h4>📋 Descripción</h4>
+                        <p>Indicador visual tipo velocímetro que muestra el porcentaje de clientes activos de la cartera total que compraron en el período.</p>
+                    </div>
+                    
+                    <div class="info-card">
+                        <h4>🎯 Objetivo</h4>
+                        <p>Alcanzar al menos 65-70% de cobertura. Un 70% o más es considerado EXCELENTE en la industria farmacéutica.</p>
+                    </div>
+                </div>
+
+                <div class="formula">
+                    <div class="formula-title">📐 Fórmula:</div>
+                    <div class="formula-content">
+                        Cobertura (%) = (Clientes Activos / Total Cartera) × 100<br><br>
+                        • <strong>Clientes Activos:</strong> COUNT DISTINCT de partner_name con ventas en el período<br>
+                        • <strong>Total Cartera:</strong> COUNT de res.partner con active = True del año
+                    </div>
+                </div>
+
+                <div class="data-source">
+                    <strong>📊 Fuente de Datos:</strong><br>
+                    • <strong>Clientes Activos:</strong> Set único de <code>partner_name</code> en ventas del período<br>
+                    • <strong>Cartera Total:</strong> Tabla <code>res.partner</code> con <code>active = True</code> del año seleccionado<br>
+                    • <strong>Visualización:</strong> SVG animado con gradiente de colores
+                </div>
+
+                <div class="interpretation">
+                    <div class="interpretation-title">📊 Interpretación de Rangos:</div>
+                    <div>
+                        <span class="threshold threshold-danger">< 50%: BAJO - Requiere acción urgente</span><br>
+                        <span class="threshold threshold-warning">50-64%: REGULAR - Por debajo del objetivo</span><br>
+                        <span class="threshold threshold-info">65-70%: META - Rango objetivo</span><br>
+                        <span class="threshold threshold-success">≥ 70%: EXCELENTE - Cobertura superior</span>
+                    </div>
+                </div>
+
+                <div class="note">
+                    <div class="note-title">💡 Implicaciones Comerciales:</div>
+                    <ul style="margin-left: 20px; margin-top: 10px;">
+                        <li>Cobertura baja puede indicar problemas de visita/rutas de vendedores</li>
+                        <li>Cobertura muy alta (>85%) podría indicar cartera mal depurada (clientes inactivos no eliminados)</li>
+                        <li>La cobertura ideal varía por canal (mayoristas: 80-90%, farmacias: 60-75%)</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="indicator">
+                <h3><span class="indicator-icon">📊</span> Gráfico de Cobertura por Canal</h3>
+                
+                <div class="info-grid">
+                    <div class="info-card">
+                        <h4>📋 Descripción</h4>
+                        <p>Gráfico de barras que muestra cobertura desglosada por canal de ventas (Tradicional, Moderno, Ecommerce, etc.)</p>
+                    </div>
+                    
+                    <div class="info-card">
+                        <h4>🎯 Uso</h4>
+                        <p>Identificar qué canales tienen mejor/peor cobertura para focalizar esfuerzos comerciales.</p>
+                    </div>
+                </div>
+
+                <div class="data-source">
+                    <strong>📊 Fuente de Datos:</strong><br>
+                    • Campo <code>sales_channel_id</code> o <code>team_id</code> de las ventas<br>
+                    • Se agrupa por canal y se calcula cobertura independiente para cada uno<br>
+                    • Colores según umbral: Rojo (<50%), Amarillo (50-65%), Verde (≥65%)
+                </div>
+            </div>
+        </div>
+
+        <!-- SECCIÓN 4: FRECUENCIA DE COMPRA -->
+        <div class="section" id="frecuencia">
+            <h2>4. Frecuencia de Compra por Línea</h2>
+
+            <div class="indicator">
+                <h3><span class="indicator-icon">🔄</span> Gráfico de Barras Horizontales</h3>
+                
+                <div class="info-grid">
+                    <div class="info-card">
+                        <h4>📋 Descripción</h4>
+                        <p>Muestra cuántas veces en promedio compra cada cliente por línea comercial. Es un indicador de recurrencia y fidelidad.</p>
+                    </div>
+                    
+                    <div class="info-card">
+                        <h4>🎯 Objetivo</h4>
+                        <p>Frecuencia ≥ 2 es considerada saludable. Indica que los clientes vuelven a comprar, no son ocasionales.</p>
+                    </div>
+                </div>
+
+                <div class="formula">
+                    <div class="formula-title">📐 Fórmula:</div>
+                    <div class="formula-content">
+                        Frecuencia = Pedidos Únicos / Clientes Activos<br><br>
+                        • <strong>Pedidos Únicos:</strong> COUNT DISTINCT de move_id por línea<br>
+                        • <strong>Clientes Activos:</strong> COUNT DISTINCT de partner_name por línea
+                    </div>
+                </div>
+
+                <div class="data-source">
+                    <strong>📊 Fuente de Datos:</strong><br>
+                    • Se agrupa por <code>commercial_line_national_id</code><br>
+                    • <strong>Pedidos:</strong> Count único de <code>move_id</code> (asientos contables)<br>
+                    • <strong>Clientes:</strong> Set único de <code>partner_name</code><br>
+                    • <strong>Colores:</strong> Rojo (<1), Amarillo (1-2), Verde (≥2)
+                </div>
+
+                <div class="interpretation">
+                    <div class="interpretation-title">📊 Interpretación de Frecuencia:</div>
+                    <ul style="margin-left: 20px;">
+                        <li><strong>< 1.0:</strong> 🔴 Riesgo - Clientes muy ocasionales, poca fidelidad</li>
+                        <li><strong>1.0 - 1.9:</strong> 🟡 Estándar - Frecuencia normal de la industria</li>
+                        <li><strong>2.0 - 3.0:</strong> 🟢 Bueno - Clientes recurrentes, buena relación comercial</li>
+                        <li><strong>> 3.0:</strong> 🌟 Excelente - Alta fidelización, clientes muy activos</li>
+                    </ul>
+                </div>
+
+                <div class="note">
+                    <div class="note-title">💡 Análisis Estratégico:</div>
+                    <ul style="margin-left: 20px; margin-top: 10px;">
+                        <li>Frecuencia baja + Alta cobertura = Oportunidad de aumentar ticket promedio</li>
+                        <li>Frecuencia alta en líneas específicas = Productos "gancho" o de alta rotación</li>
+                        <li>Comparar frecuencia entre líneas ayuda a identificar productos con potencial de cross-selling</li>
+                    </ul>
+                </div>
+            </div>
+
+            <div class="indicator">
+                <h3><span class="indicator-icon">📋</span> Tabla de Frecuencia Detallada</h3>
+                
+                <p><strong>Columnas incluidas:</strong></p>
+                <ul style="margin-left: 20px; margin-top: 10px;">
+                    <li><strong>Línea Comercial:</strong> Nombre de la línea</li>
+                    <li><strong>N° Clientes Activos:</strong> Clientes únicos que compraron</li>
+                    <li><strong>Q Pedidos:</strong> Total de pedidos/facturas emitidas</li>
+                    <li><strong>Frecuencia:</strong> Promedio de pedidos por cliente</li>
+                </ul>
+
+                <p style="margin-top: 15px;"><strong>Ordenamiento:</strong> De mayor a menor frecuencia para destacar líneas con mejor recurrencia.</p>
+            </div>
+        </div>
+
+        <!-- SECCIÓN 5: MAPA GEOGRÁFICO -->
+        <div class="section" id="mapa">
+            <h2>5. Mapa Geográfico de Penetración Comercial</h2>
+
+            <div class="indicator">
+                <h3><span class="indicator-icon">🗺️</span> Mapa Interactivo del Perú</h3>
+                
+                <div class="info-grid">
+                    <div class="info-card">
+                        <h4>📋 Descripción</h4>
+                        <p>Mapa interactivo de los 25 departamentos del Perú, coloreados según el nivel de ventas. Permite visualizar geográficamente la penetración comercial.</p>
+                    </div>
+                    
+                    <div class="info-card">
+                        <h4>🎯 Objetivo</h4>
+                        <p>Identificar zonas de alta/baja penetración, planificar expansión territorial y optimizar rutas de distribución.</p>
+                    </div>
+                </div>
+
+                <div class="data-source">
+                    <strong>📊 Fuente de Datos:</strong><br>
+                    • <strong>Ubicación:</strong> Campo <code>state_id</code> de tabla <code>res.partner</code><br>
+                    • <strong>Ventas:</strong> Suma de <code>balance</code> agrupada por departamento<br>
+                    • <strong>Clientes:</strong> COUNT DISTINCT de <code>partner_name</code> por departamento<br>
+                    • <strong>API:</strong> <code>/api/mapa-ventas?año=YYYY&mes=MM</code><br>
+                    • <strong>Librería:</strong> Leaflet.js con tiles de OpenStreetMap<br>
+                    • <strong>GeoJSON:</strong> Polígonos de departamentos del Perú
+                </div>
+
+                <div class="interpretation">
+                    <div class="interpretation-title">🎨 Escala de Colores:</div>
+                    <div style="margin-top: 10px;">
+                        <div style="padding: 8px; margin: 5px 0; background: #ffffcc; border-left: 4px solid #ffffcc;">
+                            <strong>Amarillo Claro:</strong> Ventas muy bajas (< 10% del máximo)
+                        </div>
+                        <div style="padding: 8px; margin: 5px 0; background: #c7e9c0; border-left: 4px solid #c7e9c0;">
+                            <strong>Verde Claro:</strong> Ventas bajas-medias (10-30%)
+                        </div>
+                        <div style="padding: 8px; margin: 5px 0; background: #74c476; border-left: 4px solid #74c476;">
+                            <strong>Verde Medio:</strong> Ventas medias (30-60%)
+                        </div>
+                        <div style="padding: 8px; margin: 5px 0; background: #238b45; border-left: 4px solid #238b45; color: white;">
+                            <strong>Verde Oscuro:</strong> Ventas altas (60-80%)
+                        </div>
+                        <div style="padding: 8px; margin: 5px 0; background: #00441b; border-left: 4px solid #00441b; color: white;">
+                            <strong>Verde Muy Oscuro:</strong> Ventas muy altas (> 80% del máximo)
+                        </div>
+                    </div>
+                </div>
+
+                <div class="note">
+                    <div class="note-title">🎯 Funcionalidades Interactivas:</div>
+                    <ul style="margin-left: 20px; margin-top: 10px;">
+                        <li><strong>Hover:</strong> Al pasar el mouse, muestra tooltip con: Departamento, Ventas (S/), N° Clientes</li>
+                        <li><strong>Click:</strong> Acerca el zoom al departamento seleccionado</li>
+                        <li><strong>Filtros:</strong> Línea Comercial, Grupo, Zona (aplican en tiempo real)</li>
+                        <li><strong>Leyenda:</strong> Muestra rangos de ventas con colores correspondientes</li>
+                        <li><strong>Zoom:</strong> +/- para acercar/alejar, scroll del mouse también funciona</li>
+                    </ul>
+                </div>
+
+                <div class="code-block">
+// Ejemplo de estructura de datos del mapa
+{
+  "success": true,
+  "data": [
+    {
+      "departamento": "LIMA",
+      "ventas": 1250000.50,
+      "clientes": 145,
+      "color": "#1a9850"
+    },
+    // ... más departamentos
+  ],
+  "fuente": "odoo",
+  "total_ventas": 5000000.00
+}
+                </div>
+
+                <div class="interpretation">
+                    <div class="interpretation-title">📊 Análisis Recomendado:</div>
+                    <ul style="margin-left: 20px; margin-top: 10px;">
+                        <li><strong>Departamentos en amarillo:</strong> Oportunidades de crecimiento, poca penetración</li>
+                        <li><strong>Departamentos verde oscuro:</strong> Mercados consolidados, enfocarse en retención</li>
+                        <li><strong>Departamentos sin color:</strong> Sin ventas, evaluar viabilidad de entrada</li>
+                        <li><strong>Concentración excesiva:</strong> Si >70% ventas en 1-2 departamentos, riesgo de concentración</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- SECCIÓN 6: TENDENCIA HISTÓRICA -->
+        <div class="section" id="tendencia">
+            <h2>6. Tendencia Histórica de Ventas (12 Meses)</h2>
+
+            <div class="indicator">
+                <h3><span class="indicator-icon">📈</span> Gráfico de Líneas con Tendencia</h3>
+                
+                <div class="info-grid">
+                    <div class="info-card">
+                        <h4>📋 Descripción</h4>
+                        <p>Visualiza la evolución mensual de ventas vs metas durante los últimos 12 meses del año seleccionado, con una línea de tendencia de regresión lineal.</p>
+                    </div>
+                    
+                    <div class="info-card">
+                        <h4>🎯 Objetivo</h4>
+                        <p>Identificar patrones estacionales, tendencias de crecimiento/decrecimiento y periodos de sobre/bajo cumplimiento.</p>
+                    </div>
+                </div>
+
+                <div class="data-source">
+                    <strong>📊 Fuente de Datos:</strong><br>
+                    • <strong>Período:</strong> 12 meses del año seleccionado (ej: 2026-01 a 2026-12)<br>
+                    • <strong>Odoo:</strong> <code>get_sales_summary_by_month()</code> para años ≥2026<br>
+                    • <strong>Supabase:</strong> <code>get_sales_by_month()</code> para años ≤2025<br>
+                    • <strong>Metas:</strong> Google Sheets por mes<br>
+                    • <strong>API:</strong> <code>/api/tendencia?año=YYYY</code>
+                </div>
+
+                <div class="interpretation">
+                    <div class="interpretation-title">📊 Elementos del Gráfico:</div>
+                    <ul style="margin-left: 20px; margin-top: 10px;">
+                        <li><strong>Línea Morada Sólida (Venta Real):</strong> Ventas efectivas mensuales</li>
+                        <li><strong>Línea Amarilla Punteada (Meta):</strong> Objetivo mensual</li>
+                        <li><strong>Línea Azul Punteada (Tendencia):</strong> Regresión lineal, muestra si la tendencia es creciente/decreciente</li>
+                        <li><strong>Áreas Sombreadas:</strong> 
+                            <ul>
+                                <li>Verde: Períodos donde venta > meta (sobrecumplimiento)</li>
+                                <li>Roja: Períodos donde venta < meta (subcumplimiento)</li>
+                            </ul>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="formula">
+                    <div class="formula-title">📐 Cálculo de Línea de Tendencia:</div>
+                    <div class="formula-content">
+                        Regresión Lineal Simple:<br>
+                        slope = (n×ΣXY - ΣX×ΣY) / (n×ΣX² - (ΣX)²)<br>
+                        intercept = (ΣY - slope×ΣX) / n<br>
+                        tendencia[i] = slope × i + intercept
+                    </div>
+                </div>
+
+                <div class="note">
+                    <div class="note-title">✨ Nueva Funcionalidad: Comparación Entre Años</div>
+                    <p><strong>Checkbox "Comparar con [año siguiente]":</strong></p>
+                    <ul style="margin-left: 20px; margin-top: 10px;">
+                        <li>Aparece solo cuando se visualiza un año anterior al actual (ej: 2025)</li>
+                        <li>Al activarlo, carga dinámicamente datos del año siguiente (ej: 2026)</li>
+                        <li>Superpone una línea naranja con las ventas del año comparado</li>
+                        <li>Permite ver cómo va el año actual vs el mismo período del año anterior</li>
+                        <li>Útil para identificar si se está mejorando o empeorando vs año previo</li>
+                    </ul>
+                </div>
+
+                <div class="interpretation">
+                    <div class="interpretation-title">📊 Patrones a Identificar:</div>
+                    <ul style="margin-left: 20px; margin-top: 10px;">
+                        <li><strong>Estacionalidad:</strong> Picos y valles recurrentes (ej: altas ventas en diciembre)</li>
+                        <li><strong>Tendencia Creciente:</strong> Línea azul ascendente = negocio en crecimiento</li>
+                        <li><strong>Tendencia Decreciente:</strong> Línea azul descendente = alerta, requiere acción</li>
+                        <li><strong>Volatilidad:</strong> Mucha variación mes a mes = inestabilidad comercial</li>
+                        <li><strong>Cumplimiento Sostenido:</strong> Línea morada consistentemente sobre amarilla = operación saludable</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- SECCIÓN 7: ANÁLISIS RFM -->
+        <div class="section" id="rfm">
+            <h2>7. Análisis RFM (Segmentación de Clientes)</h2>
+
+            <div class="indicator">
+                <h3><span class="indicator-icon">🎯</span> Gráfico de Dona + Tabla RFM</h3>
+                
+                <div class="info-grid">
+                    <div class="info-card">
+                        <h4>📋 Descripción</h4>
+                        <p>Segmentación avanzada de clientes basada en 3 dimensiones: Recencia (cuándo compró), Frecuencia (cuántas veces) y Monetario (cuánto gastó).</p>
+                    </div>
+                    
+                    <div class="info-card">
+                        <h4>🎯 Objetivo</h4>
+                        <p>Clasificar clientes en segmentos para estrategias comerciales personalizadas (retención, reactivación, upselling).</p>
+                    </div>
+                </div>
+
+                <div class="formula">
+                    <div class="formula-title">📐 Cálculo de Scores RFM:</div>
+                    <div class="formula-content">
+                        • <strong>Recency:</strong> Días desde última compra (menor es mejor)<br>
+                        • <strong>Frequency:</strong> Cantidad de pedidos (mayor es mejor)<br>
+                        • <strong>Monetary:</strong> Total gastado (mayor es mejor)<br><br>
+                        Cada dimensión se divide en 4 cuartiles (1-4)<br>
+                        Score RFM = concatenar scores (ej: "444" = mejor cliente)
+                    </div>
+                </div>
+
+                <div class="interpretation">
+                    <div class="interpretation-title">👥 Segmentos Definidos:</div>
+                    <div style="margin-top: 10px;">
+                        <div style="padding: 10px; margin: 8px 0; background: #52c41a; color: white; border-radius: 6px;">
+                            <strong>🏆 Campeones (R:4, F:4-5, M:4-5):</strong> Mejores clientes. Compran frecuentemente, gastaron mucho y compraron recientemente.
+                            <br><strong>Estrategia:</strong> Recompensarlos, programas VIP, lanzamientos exclusivos.
+                        </div>
+                        
+                        <div style="padding: 10px; margin: 8px 0; background: #1890ff; color: white; border-radius: 6px;">
+                            <strong>💙 Leales (R:2-4, F:3-5, M:3-5):</strong> Clientes consistentes con buen historial.
+                            <br><strong>Estrategia:</strong> Mantener relación, cross-selling, aumentar frecuencia.
+                        </div>
+                        
+                        <div style="padding: 10px; margin: 8px 0; background: #faad14; color: white; border-radius: 6px;">
+                            <strong>🌱 Potenciales (R:3-4, F:1-2, M:1-2):</strong> Compraron recientemente pero poco.
+                            <br><strong>Estrategia:</strong> Nurturing, educación de producto, ofertas de prueba.
+                        </div>
+                        
+                        <div style="padding: 10px; margin: 8px 0; background: #13c2c2; color: white; border-radius: 6px;">
+                            <strong>🆕 Nuevos (R:4-5, F:1, M:1):</strong> Primera compra reciente.
+                            <br><strong>Estrategia:</strong> Onboarding, buena experiencia, second purchase incentive.
+                        </div>
+                        
+                        <div style="padding: 10px; margin: 8px 0; background: #fa8c16; color: white; border-radius: 6px;">
+                            <strong>⚠️ En Riesgo (R:2-3, F:2-5, M:2-5):</strong> Buenos clientes que no han comprado recientemente.
+                            <br><strong>Estrategia:</strong> Reactivación urgente, ofertas personalizadas, contacto directo.
+                        </div>
+                        
+                        <div style="padding: 10px; margin: 8px 0; background: #722ed1; color: white; border-radius: 6px;">
+                            <strong>😴 Hibernando (R:1-2, F:1-2, M:1-2):</strong> Clientes inactivos de bajo valor.
+                            <br><strong>Estrategia:</strong> Campañas de reactivación masiva, descuentos agresivos.
+                        </div>
+                        
+                        <div style="padding: 10px; margin: 8px 0; background: #ff4d4f; color: white; border-radius: 6px;">
+                            <strong>❌ Perdidos (R:1, F:1-5, M:1-5):</strong> No compran hace mucho tiempo.
+                            <br><strong>Estrategia:</strong> Win-back campaigns, encuestas de salida, última oportunidad.
+                        </div>
+                    </div>
+                </div>
+
+                <div class="data-source">
+                    <strong>📊 Fuente de Datos:</strong><br>
+                    • Se calcula por cada cliente único (<code>partner_name</code>)<br>
+                    • <strong>Recency:</strong> <code>TODAY - MAX(invoice_date)</code><br>
+                    • <strong>Frequency:</strong> <code>COUNT DISTINCT(move_id)</code><br>
+                    • <strong>Monetary:</strong> <code>SUM(balance)</code><br>
+                    • Top 100 clientes se muestran en tabla ordenada por valor monetario
+                </div>
+
+                <div class="note">
+                    <div class="note-title">💡 Uso Estratégico del RFM:</div>
+                    <ul style="margin-left: 20px; margin-top: 10px;">
+                        <li>Priorizar recursos en Campeones y Leales (80% del valor)</li>
+                        <li>Convertir Potenciales y Nuevos con estrategias de adopción</li>
+                        <li>Evitar pérdida de clientes En Riesgo con acciones preventivas</li>
+                        <li>Decidir si vale la pena invertir en recuperar Perdidos/Hibernando</li>
+                        <li>Ajustar inventario y producción según perfil de clientes</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- SECCIÓN 8: HEATMAP -->
+        <div class="section" id="heatmap">
+            <h2>8. Heatmap de Actividad de Ventas</h2>
+
+            <div class="indicator">
+                <h3><span class="indicator-icon">🔥</span> Matriz Día de Semana × Semana del Mes</h3>
+                
+                <div class="info-grid">
+                    <div class="info-card">
+                        <h4>📋 Descripción</h4>
+                        <p>Mapa de calor que muestra intensidad de ventas por día de la semana y semana del mes. Identifica patrones de actividad comercial.</p>
+                    </div>
+                    
+                    <div class="info-card">
+                        <h4>🎯 Objetivo</h4>
+                        <p>Optimizar planificación de recursos, rutas de vendedores y campañas comerciales según días/semanas de mayor actividad.</p>
+                    </div>
+                </div>
+
+                <div class="data-source">
+                    <strong>📊 Fuente de Datos:</strong><br>
+                    • Campo <code>invoice_date</code> de las ventas<br>
+                    • <strong>Eje X:</strong> Día de semana (Lun-Dom)<br>
+                    • <strong>Eje Y:</strong> Semana del mes (Sem 1-5)<br>
+                    • <strong>Color:</strong> Intensidad según monto de ventas (gradiente frío-caliente)<br>
+                    • <strong>Librería:</strong> ECharts heatmap
+                </div>
+
+                <div class="interpretation">
+                    <div class="interpretation-title">🎨 Escala de Colores:</div>
+                    <p style="margin-top: 10px;">Gradiente de <strong>Azul (frío, ventas bajas)</strong> a <strong>Rojo (caliente, ventas altas)</strong></p>
+                    <ul style="margin-left: 20px; margin-top: 10px;">
+                        <li><strong>Azul Oscuro:</strong> Días con ventas mínimas o nulas</li>
+                        <li><strong>Amarillo:</strong> Días con ventas promedio</li>
+                        <li><strong>Naranja/Rojo:</strong> Días con ventas excepcionales</li>
+                    </ul>
+                </div>
+
+                <div class="interpretation">
+                    <div class="interpretation-title">📊 Patrones Comunes:</div>
+                    <ul style="margin-left: 20px; margin-top: 10px;">
+                        <li><strong>Inicio de Semana (Lun-Mar):</strong> Generalmente más activo, clientes hacen pedidos de la semana</li>
+                        <li><strong>Fin de Semana (Dom):</strong> Típicamente bajo, menos actividad comercial</li>
+                        <li><strong>Primera Semana del Mes:</strong> Suele ser más fuerte, clientes recién recibieron presupuesto</li>
+                        <li><strong>Última Semana:</strong> Puede ser alta si hay cierre de mes/cumplimiento de cuotas</li>
+                        <li><strong>Semanas 3-4:</strong> Típicamente más bajas, "valle" del mes</li>
+                    </ul>
+                </div>
+
+                <div class="note">
+                    <div class="note-title">💡 Aplicaciones Prácticas:</div>
+                    <ul style="margin-left: 20px; margin-top: 10px;">
+                        <li><strong>Planificación de Rutas:</strong> Asignar más vendedores en días/semanas de alta demanda</li>
+                        <li><strong>Inventario:</strong> Preparar stock antes de días pico</li>
+                        <li><strong>Campañas:</strong> Lanzar promociones en días/semanas bajas para nivelar demanda</li>
+                        <li><strong>Logística:</strong> Reforzar despachos en días de mayor actividad</li>
+                        <li><strong>KPIs:</strong> Ajustar metas diarias según patrón histórico</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- SECCIÓN 9: CICLO DE VIDA -->
+        <div class="section" id="ciclo-vida">
+            <h2>9. Ciclo de Vida de Productos</h2>
+
+            <div class="indicator">
+                <h3><span class="indicator-icon">🔄</span> Gráfico de Barras Apiladas</h3>
+                
+                <div class="info-grid">
+                    <div class="info-card">
+                        <h4>📋 Descripción</h4>
+                        <p>Visualiza la distribución de ventas entre productos nuevos (IPN) y productos maduros, agrupado por línea comercial.</p>
+                    </div>
+                    
+                    <div class="info-card">
+                        <h4>🎯 Objetivo</h4>
+                        <p>Monitorear si el portafolio se está renovando adecuadamente. Balance saludable: 15-25% productos nuevos.</p>
+                    </div>
+                </div>
+
+                <div class="data-source">
+                    <strong>📊 Fuente de Datos:</strong><br>
+                    • Campo <code>product_life_cycle</code> de <code>product.product</code><br>
+                    • Valores: 'nuevo' o 'viejo' (productos maduros)<br>
+                    • Se agrupa por <code>commercial_line_national_id</code><br>
+                    • Cada barra muestra % de ventas de cada categoría
+                </div>
+
+                <div class="interpretation">
+                    <div class="interpretation-title">📊 Interpretación de Composición:</div>
+                    <ul style="margin-left: 20px; margin-top: 10px;">
+                        <li><strong>Mucho Nuevo (>40%):</strong> 
+                            <ul>
+                                <li>✅ Positivo: Innovación activa, portafolio fresco</li>
+                                <li>⚠️ Riesgo: Puede indicar discontinuación agresiva de productos maduros rentables</li>
+                            </ul>
+                        </li>
+                        <li><strong>Balanceado (15-25% nuevo):</strong> 
+                            <ul>
+                                <li>✅ Ideal: Renovación sostenida sin perder productos cash-cow</li>
+                            </ul>
+                        </li>
+                        <li><strong>Poco Nuevo (<10%):</strong> 
+                            <ul>
+                                <li>⚠️ Alerta: Portafolio envejecido, puede perder competitividad</li>
+                                <li>💡 Acción: Acelerar lanzamientos de nuevos productos</li>
+                            </ul>
+                        </li>
+                        <li><strong>Sin Nuevo (0%):</strong> 
+                            <ul>
+                                <li>🔴 Crítico: Línea estancada, vulnerable a competencia</li>
+                            </ul>
+                        </li>
+                    </ul>
+                </div>
+
+                <div class="note">
+                    <div class="note-title">💡 Estrategias por Escenario:</div>
+                    <ul style="margin-left: 20px; margin-top: 10px;">
+                        <li><strong>Líneas con alto % nuevo:</strong> Asegurar supply chain, monitorear adopción de mercado</li>
+                        <li><strong>Líneas con bajo % nuevo:</strong> Pipeline de innovación, considerar extensiones de línea</li>
+                        <li><strong>Líneas 100% maduro:</strong> Evaluar si son "vacas lecheras" estables o necesitan renovación</li>
+                        <li><strong>Comparar entre líneas:</strong> Identificar best practices de innovación</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <!-- SECCIÓN 10: TOP PRODUCTOS -->
+        <div class="section" id="productos-top">
+            <h2>10. Top 10 Productos Más Vendidos</h2>
+
+            <div class="indicator">
+                <h3><span class="indicator-icon">🏆</span> Gráfico de Barras Horizontales</h3>
+                
+                <div class="info-grid">
+                    <div class="info-card">
+                        <h4>📋 Descripción</h4>
+                        <p>Lista de los 10 productos con mayores ventas en el período seleccionado. Muestra los SKU más relevantes del portafolio.</p>
+                    </div>
+                    
+                    <div class="info-card">
+                        <h4>🎯 Objetivo</h4>
+                        <p>Identificar productos estrella, asegurar disponibilidad de stock y enfocar esfuerzos comerciales en los de mayor impacto.</p>
+                    </div>
+                </div>
+
+                <div class="data-source">
+                    <strong>📊 Fuente de Datos:</strong><br>
+                    • Suma de <code>balance</code> agrupada por <code>product_id</code><br>
+                    • Nombre de producto de campo <code>name</code><br>
+                    • Ordenado descendentemente por monto de venta<br>
+                    • Limitado a Top 10
+                </div>
+
+                <div class="formula">
+                    <div class="formula-title">📐 Análisis Pareto (80/20):</div>
+                    <div class="formula-content">
+                        Típicamente los Top 10 productos representan entre 40-60% de las ventas totales.<br>
+                        Si los Top 10 = >70% → Alta concentración (riesgo de dependencia)<br>
+                        Si los Top 10 = <30% → Muy disperso (dificulta gestión de inventario)
+                    </div>
+                </div>
+
+                <div class="interpretation">
+                    <div class="interpretation-title">📊 Análisis Recomendado:</div>
+                    <ul style="margin-left: 20px; margin-top: 10px;">
+                        <li><strong>Stock:</strong> Productos en Top 10 deben tener stock de seguridad alto</li>
+                        <li><strong>Promociones:</strong> Evitar descontar productos Top 10 (ya venden bien)</li>
+                        <li><strong>Cross-selling:</strong> Usar Top 10 como productos "gancho" para vender otros</li>
+                        <li><strong>Competencia:</strong> Monitorear precios de competidores en estos SKU clave</li>
+                        <li><strong>Variaciones mes a mes:</strong> Productos que salen/entran del Top 10 pueden indicar cambios de mercado</li>
+                    </ul>
+                </div>
+
+                <div class="note">
+                    <div class="note-title">⚠️ Señales de Alerta:</div>
+                    <ul style="margin-left: 20px; margin-top: 10px;">
+                        <li><strong>Cambio drástico en Top 10:</strong> Puede indicar quiebre de stock de productos principales</li>
+                        <li><strong>Producto nuevo en Top 10 súbitamente:</strong> Verificar si es crecimiento real o pedido one-time grande</li>
+                        <li><strong>Producto maduro sale de Top 10:</strong> Puede estar siendo sustituido por competencia</li>
+                        <li><strong>Top 10 muy similar mes a mes:</strong> Estabilidad pero también posible estancamiento de portafolio</li>
+                    </ul>
+                </div>
+            </div>
+        </div>
+
+        <footer>
+            <p><strong>Dashboard de Ventas Farmacéuticas - AMAH</strong></p>
+            <p>Manual de Gráficos e Indicadores | Versión 3.0</p>
+            <p>Última actualización: 13 de enero de 2026</p>
+            <p style="margin-top: 20px; color: #999;">
+                Este documento describe todos los gráficos e indicadores del dashboard.<br>
+                Para soporte técnico o consultas, contactar al equipo de Business Intelligence.
+            </p>
+        </footer>
+    </div>
+</body>
+</html>

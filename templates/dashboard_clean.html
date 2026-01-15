@@ -531,14 +531,10 @@
 
                         <!-- Explicación del gráfico -->
                         <div
-                            style="margin-top: 20px; padding: 15px; background: #e6f7ff; border-left: 4px solid #1890ff; border-radius: 4px; font-size: 13px;">
-                            <div style="font-weight: 600; margin-bottom: 8px; color: #0050b3;">¿Qué muestra?</div>
-                            <div style="color: #333; line-height: 1.6;">
-                                <strong>Evolución mensual</strong> de ventas vs metas para identificar patrones,
-                                estacionalidad y cumplimiento sostenido.
-                                Las áreas sombreadas indican períodos de sobre-cumplimiento (verde) o bajo-cumplimiento
-                                (rojo) de metas.<br>
-                                <span style="color:#1890ff; font-weight:500;">Este gráfico SIEMPRE muestra los últimos 12 meses, sin importar el mes seleccionado arriba.</span>
+                            style="margin-top: 15px; padding: 10px 15px; background: #f8f9fa; border-left: 3px solid #875A7B; border-radius: 4px; font-size: 12px;">
+                            <div style="color: #666; line-height: 1.7;">
+                                <strong style="color: #333;">Evolución mensual</strong> de ventas vs metas para identificar patrones y estacionalidad.<br>
+                                <span style="color:#875A7B; font-weight:500;">Muestra siempre los últimos 12 meses.</span>
                             </div>
                         </div>
                     </div>
@@ -549,6 +545,102 @@
                     <div class="tabla-header">
                         <h3>🎯 Análisis RFM - Segmentación de Clientes</h3>
                     </div>
+                    
+                    <!-- Filtros organizados en fila horizontal -->
+                    <div style="display: flex; gap: 15px; margin-bottom: 20px; flex-wrap: wrap; align-items: flex-end;">
+                        <!-- Filtro por Canal -->
+                        <div style="flex: 0 0 auto; width: 320px;">
+                            <label for="filtroCanal" style="font-size: 13px; font-weight: 600; color: #555; display: block; margin-bottom: 8px;">
+                                <i class="fas fa-filter"></i> Filtrar por Canal:
+                            </label>
+                            <select id="filtroCanal" onchange="filtrarRFMPorCanal()" style="
+                                width: 100%;
+                                padding: 11px 14px;
+                                border: 2px solid #875A7B;
+                                border-radius: 6px;
+                                font-size: 14px;
+                                font-weight: 500;
+                                background: white;
+                                color: #333;
+                                cursor: pointer;
+                                transition: all 0.3s;
+                                box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+                                appearance: none;
+                                background-image: url('data:image/svg+xml;charset=UTF-8,%3csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27%23666%27 stroke-width=%272%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27%3e%3cpolyline points=%276 9 12 15 18 9%27%3e%3c/polyline%3e%3c/svg%3e');
+                                background-repeat: no-repeat;
+                                background-position: right 10px center;
+                                background-size: 16px;
+                                padding-right: 35px;
+                            " onmouseover="this.style.borderColor='#6B4568'; this.style.boxShadow='0 4px 8px rgba(0,0,0,0.12)'" 
+                               onmouseout="this.style.borderColor='#875A7B'; this.style.boxShadow='0 2px 4px rgba(0,0,0,0.08)'">
+                                <option value="TODOS">📊 Todos los Canales</option>
+                                <option value="DIGITAL">📱 DIGITAL (Ecommerce)</option>
+                                <option value="NACIONAL">🏪 NACIONAL (Distribuidores)</option>
+                            </select>
+                        </div>
+                        
+                        <!-- Sub-filtro de Grupo de Venta (aparece dinámicamente) -->
+                        <div id="grupoFilterContainer" style="display: none; flex: 0 0 auto; width: 320px;">
+                            <label for="grupoFilter" style="font-size: 13px; font-weight: 600; color: #555; display: block; margin-bottom: 8px;">
+                                <i class="fas fa-layer-group"></i> Grupo de Venta:
+                            </label>
+                            <select id="grupoFilter" onchange="filtrarRFMPorCanal()" style="
+                                width: 100%;
+                                padding: 11px 14px;
+                                border: 2px solid #875A7B;
+                                border-radius: 6px;
+                                font-size: 14px;
+                                font-weight: 500;
+                                background: white;
+                                color: #333;
+                                cursor: pointer;
+                                transition: all 0.3s;
+                                box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+                                appearance: none;
+                                background-image: url('data:image/svg+xml;charset=UTF-8,%3csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27%23666%27 stroke-width=%272%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27%3e%3cpolyline points=%276 9 12 15 18 9%27%3e%3c/polyline%3e%3c/svg%3e');
+                                background-repeat: no-repeat;
+                                background-position: right 10px center;
+                                background-size: 16px;
+                                padding-right: 35px;
+                            " onmouseover="this.style.borderColor='#6B4568'; this.style.boxShadow='0 4px 8px rgba(0,0,0,0.12)'" 
+                               onmouseout="this.style.borderColor='#875A7B'; this.style.boxShadow='0 2px 4px rgba(0,0,0,0.08)'">
+                                <option value="TODOS_GRUPOS">Todos los Grupos</option>
+                            </select>
+                        </div>
+                        
+                        <!-- Selector de Período Temporal -->
+                        <div style="flex: 0 0 auto; width: 320px;">
+                            <label for="periodoFilter" style="font-size: 13px; font-weight: 600; color: #555; display: block; margin-bottom: 8px;">
+                                <i class="fas fa-calendar-alt"></i> Período de Análisis:
+                            </label>
+                            <select id="periodoFilter" onchange="cambiarPeriodoRFM()" style="
+                                width: 100%;
+                                padding: 11px 14px;
+                                border: 2px solid #875A7B;
+                                border-radius: 6px;
+                                font-size: 14px;
+                                font-weight: 500;
+                                background: white;
+                                color: #333;
+                                cursor: pointer;
+                                transition: all 0.3s;
+                                box-shadow: 0 2px 4px rgba(0,0,0,0.08);
+                                appearance: none;
+                                background-image: url('data:image/svg+xml;charset=UTF-8,%3csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 24 24%27 fill=%27none%27 stroke=%27%23666%27 stroke-width=%272%27 stroke-linecap=%27round%27 stroke-linejoin=%27round%27%3e%3cpolyline points=%276 9 12 15 18 9%27%3e%3c/polyline%3e%3c/svg%3e');
+                                background-repeat: no-repeat;
+                                background-position: right 10px center;
+                                background-size: 16px;
+                                padding-right: 35px;
+                            " onmouseover="this.style.borderColor='#6B4568'; this.style.boxShadow='0 4px 8px rgba(0,0,0,0.12)'" 
+                               onmouseout="this.style.borderColor='#875A7B'; this.style.boxShadow='0 2px 4px rgba(0,0,0,0.08)'">
+                                <option value="0" selected>🔄 Mes Actual (YTD)</option>
+                                <option value="30">📆 Últimos 30 días</option>
+                                <option value="90">📊 Últimos 90 días</option>
+                                <option value="180">📈 Últimos 180 días</option>
+                                <option value="365">📅 Último año (365 días)</option>
+                            </select>
+                        </div>
+                    </div>
 
                     <!-- Grid de 2 columnas -->
                     <div
@@ -556,7 +648,7 @@
                         <!-- Columna 1: Distribución de segmentos -->
                         <div class="grafico-container" style="margin: 0; overflow: hidden;">
                             <div class="tabla-header" style="margin-bottom: 15px;">
-                                <h4 style="margin: 0; font-size: 16px;">Distribución por Segmento</h4>
+                                <h4 id="tituloGraficoSegmentos" style="margin: 0; font-size: 16px;">Distribución por Segmento</h4>
                             </div>
                             {% if segmentos_rfm %}
                             <div style="position: relative; height: 300px; width: 100%;">
@@ -591,27 +683,39 @@
 
                         <!-- Columna 2: Top clientes -->
                         <div class="grafico-container" style="margin: 0; overflow: hidden;">
-                            <div class="tabla-header" style="margin-bottom: 15px;">
-                                <h4 style="margin: 0; font-size: 16px;">Top 20 Clientes por Valor</h4>
+                            <div class="tabla-header" style="margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center;">
+                                <h4 style="margin: 0; font-size: 16px;">
+                                    Top 20 Clientes por Valor 
+                                    <span id="canalActualRFM" style="color: #875A7B; font-weight: 600;">(Todos)</span>
+                                </h4>
+                                <span id="totalClientesFiltrados" style="font-size: 13px; color: #666; font-weight: 500;">
+                                    <!-- Se actualiza dinámicamente -->
+                                </span>
                             </div>
                             <div style="overflow-y: auto; overflow-x: hidden; max-height: 500px;">
                                 <table class="tabla-avance" style="font-size: 12px; table-layout: fixed; width: 100%;">
                                     <thead>
                                         <tr>
                                             <th style="width: 5%;">#</th>
-                                            <th style="width: 35%;">Cliente</th>
+                                            <th style="width: 30%;">Cliente</th>
+                                            <th style="width: 12%;">Canal</th>
                                             <th style="width: 15%;">Segmento</th>
-                                            <th style="width: 12%;">Recency</th>
-                                            <th style="width: 12%;">Frequency</th>
-                                            <th style="width: 21%;">Valor</th>
+                                            <th style="width: 10%;" title="Días desde última compra">Recencia</th>
+                                            <th style="width: 10%;" title="Número de pedidos">Frecuencia</th>
+                                            <th style="width: 18%;">Valor</th>
                                         </tr>
                                     </thead>
-                                    <tbody>
+                                    <tbody id="tablaClientesRFM">
                                         {% for cliente in clientes_rfm[:20] %}
                                         <tr>
                                             <td style="text-align: center;">{{ loop.index }}</td>
                                             <td style="font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
                                                 title="{{ cliente.cliente }}">{{ cliente.cliente }}</td>
+                                            <td style="text-align: center; font-size: 11px;">
+                                                <span style="padding: 3px 6px; border-radius: 4px; background: #f0f0f0; font-weight: 500;">
+                                                    {{ cliente.grupo|default('N/A') }}
+                                                </span>
+                                            </td>
                                             <td style="text-align: center;">
                                                 <span style="
                                         padding: 4px 8px;
@@ -636,7 +740,31 @@
 
                             <!-- Insight -->
                             <div
-                                style="margin-top: 15px; padding: 12px; background: #fff7e6; border-left: 4px solid #faad14; border-radius: 4px; font-size: 12px;">
+                                style="margin-top: 15px; padding: 12px; background: #e6f7ff; border-left: 4px solid #1890ff; border-radius: 4px; font-size: 12px;">
+                                <div style="font-weight: 600; margin-bottom: 8px; color: #0050b3;">
+                                    <i class="fas fa-info-circle"></i> 📊 ¿Cómo se clasifican los clientes?
+                                </div>
+                                <div style="line-height: 1.8; color: #333;">
+                                    <div style="margin-bottom: 8px;"><strong>Cada cliente recibe una puntuación (1-3 estrellas) en tres aspectos:</strong></div>
+                                    <div style="margin-left: 10px; margin-bottom: 6px;">• <strong>Recencia</strong> (qué tan reciente fue su última compra)</div>
+                                    <div style="margin-left: 10px; margin-bottom: 6px;">• <strong>Frecuencia</strong> (cuántas veces compró en el período)</div>
+                                    <div style="margin-left: 10px; margin-bottom: 10px;">• <strong>Valor</strong> (cuánto gastó en total)</div>
+                                    
+                                    <div style="font-weight: 600; margin-top: 10px; margin-bottom: 6px;">Los criterios varían según el tipo de cliente:</div>
+                                    <div style="margin-left: 10px;">
+                                        <div style="margin-bottom: 6px;">📱 <strong>DIGITAL</strong> (ecommerce): Se espera que compren más seguido<br>
+                                        &nbsp;&nbsp;&nbsp;&nbsp;⭐⭐⭐ Excelente: Compró hace ≤20 días y ≥4 veces<br>
+                                        &nbsp;&nbsp;&nbsp;&nbsp;⭐⭐ Bueno: Compró hace 21-45 días y 2-3 veces</div>
+                                        <div>🏪 <strong>NACIONAL</strong> (distribuidores): Compran menos seguido pero en mayor volumen<br>
+                                        &nbsp;&nbsp;&nbsp;&nbsp;⭐⭐⭐ Excelente: Compró hace ≤60 días y ≥2 veces<br>
+                                        &nbsp;&nbsp;&nbsp;&nbsp;⭐⭐ Bueno: Compró hace 61-120 días y 1 vez</div>
+                                    </div>
+                                </div>
+                            </div>
+                            
+                            <!-- Acción Recomendada -->
+                            <div
+                                style="margin-top: 10px; padding: 12px; background: #fff7e6; border-left: 4px solid #faad14; border-radius: 4px; font-size: 12px;">
                                 <div style="font-weight: 600; margin-bottom: 6px; color: #d48806;">💡 Acción
                                     Recomendada:</div>
                                 <ul style="margin: 0; padding-left: 20px; color: #333; line-height: 1.6;">
@@ -1609,10 +1737,13 @@
                     frecuencia: {{ datos_frecuencia_linea|default([])|tojson|safe }},
                     tendencia: {{ tendencia_12_meses|default([])|tojson|safe }}, // ANUAL
                     rfm: {{ segmentos_rfm|default({})|tojson|safe }},
+                    rfmPorCanal: {{ segmentos_por_canal|default({})|tojson|safe }}, // Nuevo: RFM por canal
+                    clientesRFM: {{ clientes_rfm|default([])|tojson|safe }}, // Nuevo: Lista completa de clientes
                     heatmap: {{ heatmap_ventas|default([])|tojson|safe }},
                     mapa: {{ mapa_ventas_data|default([])|tojson|safe }},      // ANUAL
                     mes: '{{ mes_seleccionado }}',
-                    dia: '{{ dia_actual }}'
+                    dia: '{{ dia_actual }}',
+                    año: {{ año_seleccionado }}
                 };
 
                 // 2. Funciones de Gráficos (ECharts & Chart.js)
@@ -1764,11 +1895,213 @@
                     const orden = ['Campeones', 'Leales', 'Potenciales', 'Nuevos', 'En Riesgo', 'Hibernando', 'Perdidos', 'Otros'];
                     const labels = [], counts = [], colores = [];
                     orden.forEach(s => { if (globalData.rfm[s]) { labels.push(s); counts.push(globalData.rfm[s].count); colores.push(globalData.rfm[s].color); } });
-                    new Chart(ctx, {
+                    
+                    // Destruir gráfico existente si hay uno
+                    if (window.chartRFM) {
+                        window.chartRFM.destroy();
+                    }
+                    
+                    window.chartRFM = new Chart(ctx, {
                         type: 'doughnut',
                         data: { labels: labels, datasets: [{ data: counts, backgroundColor: colores, borderColor: '#fff', borderWidth: 3 }] },
                         options: { responsive: true, maintainAspectRatio: false, plugins: { legend: { position: 'bottom' } } }
                     });
+                }
+
+                // Función para filtrar RFM por canal
+                function filtrarRFMPorCanal() {
+                    const canal = document.getElementById('filtroCanal').value;
+                    const grupo = document.getElementById('grupoFilter').value;
+                    const canalLabel = document.getElementById('canalActualRFM');
+                    const grupoFilterContainer = document.getElementById('grupoFilterContainer');
+                    const grupoFilterSelect = document.getElementById('grupoFilter');
+                    
+                    // Actualizar label
+                    const labels = {
+                        'TODOS': '(Todos)',
+                        'DIGITAL': '(Digital)',
+                        'NACIONAL': '(Nacional)'
+                    };
+                    
+                    // Mostrar/ocultar sub-filtro de grupo según canal
+                    if (canal === 'TODOS') {
+                        grupoFilterContainer.style.display = 'none';
+                    } else {
+                        // Obtener grupos únicos del canal seleccionado
+                        const clientesCanal = (globalData.clientesRFM || []).filter(c => c.canal === canal);
+                        const gruposUnicos = [...new Set(clientesCanal.map(c => c.grupo))].filter(g => g && g !== 'SIN GRUPO').sort();
+                        
+                        // Actualizar opciones del sub-filtro
+                        grupoFilterSelect.innerHTML = '<option value="TODOS_GRUPOS">Todos los Grupos</option>' +
+                            gruposUnicos.map(g => `<option value="${g}">${g}</option>`).join('');
+                        
+                        grupoFilterContainer.style.display = 'block';
+                    }
+                    
+                    // Filtrar clientes según canal y grupo
+                    let clientesFiltrados = globalData.clientesRFM || [];
+                    
+                    console.log('🔍 Total clientes:', clientesFiltrados.length);
+                    console.log('🔍 Canal seleccionado:', canal);
+                    console.log('🔍 Grupo seleccionado:', grupo);
+                    
+                    // Filtro por canal
+                    if (canal !== 'TODOS') {
+                        const antes = clientesFiltrados.length;
+                        clientesFiltrados = clientesFiltrados.filter(c => c.canal === canal);
+                        console.log(`🔍 Filtro canal "${canal}": ${antes} → ${clientesFiltrados.length} clientes`);
+                    }
+                    
+                    // Filtro por grupo (si está seleccionado) - ANTES de ordenar
+                    if (grupo && grupo !== 'TODOS_GRUPOS') {
+                        const antes = clientesFiltrados.length;
+                        clientesFiltrados = clientesFiltrados.filter(c => c.grupo === grupo);
+                        console.log(`🔍 Filtro grupo "${grupo}": ${antes} → ${clientesFiltrados.length} clientes`);
+                    }
+                    
+                    // Actualizar título con info de grupo si está filtrado
+                    let tituloFiltro = labels[canal] || '(Todos)';
+                    let tituloGrafico = 'Distribución por Segmento';
+                    
+                    if (grupo && grupo !== 'TODOS_GRUPOS') {
+                        tituloFiltro = `${labels[canal]} - ${grupo}`;
+                        tituloGrafico = `Distribución por Segmento (${grupo})`;
+                    } else if (canal !== 'TODOS') {
+                        tituloGrafico = `Distribución por Segmento (${labels[canal]})`;
+                    }
+                    
+                    canalLabel.textContent = tituloFiltro;
+                    
+                    // Actualizar título del gráfico
+                    const tituloGraficoElement = document.getElementById('tituloGraficoSegmentos');
+                    if (tituloGraficoElement) {
+                        tituloGraficoElement.textContent = tituloGrafico;
+                    }
+                    
+                    // Actualizar contador de clientes filtrados
+                    const totalClientesElement = document.getElementById('totalClientesFiltrados');
+                    if (totalClientesElement) {
+                        totalClientesElement.innerHTML = `📊 <strong>${clientesFiltrados.length}</strong> clientes en total`;
+                    }
+                    
+                    // AHORA SÍ ordenar por monetary y tomar top 20
+                    clientesFiltrados.sort((a, b) => b.monetary - a.monetary);
+                    const top20 = clientesFiltrados.slice(0, 20);
+                    
+                    console.log(`📊 Mostrando top ${top20.length} de ${clientesFiltrados.length} clientes`);
+                    console.log(`📊 Grupos en top 20:`, [...new Set(top20.map(c => c.grupo))]);
+                    
+                    // Actualizar tabla
+                    const tbody = document.getElementById('tablaClientesRFM');
+                    tbody.innerHTML = top20.map((cliente, index) => `
+                        <tr>
+                            <td style="text-align: center;">${index + 1}</td>
+                            <td style="font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" 
+                                title="${cliente.cliente}">${cliente.cliente}</td>
+                            <td style="text-align: center; font-size: 11px;">
+                                <span style="padding: 3px 6px; border-radius: 4px; background: #f0f0f0; font-weight: 500;">
+                                    ${cliente.grupo || 'N/A'}
+                                </span>
+                            </td>
+                            <td style="text-align: center;">
+                                <span style="
+                                    padding: 4px 8px;
+                                    border-radius: 12px;
+                                    font-size: 11px;
+                                    font-weight: 600;
+                                    background: ${cliente.color}22;
+                                    color: ${cliente.color};
+                                ">
+                                    ${cliente.categoria}
+                                </span>
+                            </td>
+                            <td style="text-align: center;">${cliente.recency} días</td>
+                            <td style="text-align: center;">${cliente.frequency}</td>
+                            <td style="text-align: right; font-weight: 600;">S/ ${cliente.monetary.toLocaleString('es-PE', {minimumFractionDigits: 0, maximumFractionDigits: 0})}</td>
+                        </tr>
+                    `).join('');
+                    
+                    // Actualizar gráfico con segmentos calculados de clientesFiltrados (ANTES del slice top 20)
+                    let segmentos = {};
+                    clientesFiltrados.forEach(cliente => {
+                        const cat = cliente.categoria;
+                        if (!segmentos[cat]) {
+                            segmentos[cat] = {
+                                count: 0,
+                                color: cliente.color
+                            };
+                        }
+                        segmentos[cat].count++;
+                    });
+                    
+                    console.log(`📊 Segmentos calculados para gráfico:`, segmentos);
+                    
+                    // Recrear gráfico con nuevos datos calculados dinámicamente
+                    const canvas = document.getElementById('graficoSegmentosRFM');
+                    if (canvas && Object.keys(segmentos).length > 0) {
+                        const ctx = canvas.getContext('2d');
+                        const orden = ['Campeones', 'Leales', 'Potenciales', 'Nuevos', 'En Riesgo', 'Hibernando', 'Perdidos', 'Otros'];
+                        const labels = [], counts = [], colores = [];
+                        orden.forEach(s => { 
+                            if (segmentos[s]) { 
+                                labels.push(s); 
+                                counts.push(segmentos[s].count); 
+                                colores.push(segmentos[s].color); 
+                            } 
+                        });
+                        
+                        if (window.chartRFM) {
+                            window.chartRFM.destroy();
+                        }
+                        
+                        window.chartRFM = new Chart(ctx, {
+                            type: 'doughnut',
+                            data: { labels: labels, datasets: [{ data: counts, backgroundColor: colores, borderColor: '#fff', borderWidth: 3 }] },
+                            options: { 
+                                responsive: true, 
+                                maintainAspectRatio: false, 
+                                plugins: { 
+                                    legend: { position: 'bottom' },
+                                    tooltip: {
+                                        callbacks: {
+                                            label: function(context) {
+                                                const label = context.label || '';
+                                                const value = context.parsed || 0;
+                                                const total = context.dataset.data.reduce((a, b) => a + b, 0);
+                                                const percentage = ((value / total) * 100).toFixed(1);
+                                                return `${label}: ${value} (${percentage}%)`;
+                                            }
+                                        }
+                                    }
+                                } 
+                            }
+                        });
+                    }
+                    
+                    console.log(`✅ RFM filtrado por canal: ${canal} - ${clientesFiltrados.length} clientes totales, mostrando top 20`);
+                }
+                
+                function cambiarPeriodoRFM() {
+                    const periodo = document.getElementById('periodoFilter').value;
+                    const mesActual = globalData.mes;
+                    const añoActual = globalData.año;
+                    
+                    // Obtener filtros actuales para mantenerlos
+                    const canalActual = document.getElementById('filtroCanal').value;
+                    const grupoActual = document.getElementById('grupoFilter').value;
+                    
+                    console.log(`🔄 Cambiando período RFM a: ${periodo} días (conservando filtros: canal=${canalActual}, grupo=${grupoActual})`);
+                    
+                    // Construir URL con todos los parámetros
+                    let url = `/dashboard?mes=${mesActual}&año=${añoActual}&periodo_rfm=${periodo}`;
+                    if (canalActual !== 'TODOS') {
+                        url += `&canal_rfm=${canalActual}`;
+                    }
+                    if (grupoActual && grupoActual !== 'TODOS_GRUPOS') {
+                        url += `&grupo_rfm=${grupoActual}`;
+                    }
+                    
+                    window.location.href = url;
                 }
 
                 function crearGraficoCicloVida() {
@@ -2150,6 +2483,42 @@
 
                 document.addEventListener('DOMContentLoaded', () => {
                     console.log('🚀 Inicializando Dashboard...');
+                    
+                    // Restaurar filtros desde URL
+                    const urlParams = new URLSearchParams(window.location.search);
+                    
+                    // Restaurar período
+                    const periodoRfm = urlParams.get('periodo_rfm') || '0';
+                    const periodoFilter = document.getElementById('periodoFilter');
+                    if (periodoFilter) {
+                        periodoFilter.value = periodoRfm;
+                        console.log(`📅 Período RFM restaurado: ${periodoRfm} días`);
+                    }
+                    
+                    // Restaurar canal
+                    const canalRfm = urlParams.get('canal_rfm');
+                    if (canalRfm) {
+                        const filtroCanal = document.getElementById('filtroCanal');
+                        if (filtroCanal) {
+                            filtroCanal.value = canalRfm;
+                        }
+                    }
+                    
+                    // Restaurar grupo
+                    const grupoRfm = urlParams.get('grupo_rfm');
+                    if (grupoRfm) {
+                        const grupoFilter = document.getElementById('grupoFilter');
+                        if (grupoFilter) {
+                            grupoFilter.value = grupoRfm;
+                        }
+                    }
+                    
+                    // Aplicar filtros si hay parámetros en URL
+                    if (canalRfm || grupoRfm) {
+                        setTimeout(() => {
+                            filtrarRFMPorCanal();
+                        }, 100);
+                    }
 
                     const [year, month] = globalData.mes.split('-').map(Number);
                     const lastDay = new Date(year, month, 0).getDate();
@@ -2184,6 +2553,13 @@
                     ].forEach(fn => {
                         try { fn(); } catch (e) { console.error(`Error en ${fn.name}:`, e); }
                     });
+                    
+                    // Inicializar contador de clientes totales
+                    const totalClientesElement = document.getElementById('totalClientesFiltrados');
+                    if (totalClientesElement && globalData.clientesRFM) {
+                        totalClientesElement.innerHTML = `📊 <strong>${globalData.clientesRFM.length}</strong> clientes en total`;
+                    }
+                    
                     console.log('✅ Dashboard cargado satisfactoriamente.');
                 });
             </script>
