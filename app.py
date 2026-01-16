@@ -639,7 +639,22 @@ def dashboard():
         ventas_por_forma = {}
         clientes_por_linea = {}  # Nueva variable para contar clientes únicos por línea
         
+        ventas_sin_linea = 0
+        ventas_sin_canal = 0
+        ventas_categoria_excluida = 0
+        
+        # Categorías a excluir (igual que Proyecto A)
+        categorias_excluidas = [315, 333, 304, 314, 318, 339]
+        
         for sale in sales_data:
+            # Excluir categorías específicas (para coincidir con Proyecto A)
+            categ_id = sale.get('categ_id')
+            if categ_id and isinstance(categ_id, list) and len(categ_id) > 0:
+                categ_id_num = categ_id[0]
+                if categ_id_num in categorias_excluidas:
+                    ventas_categoria_excluida += 1
+                    continue
+            
             # Excluir VENTA INTERNACIONAL (exportaciones)
             linea_comercial = sale.get('commercial_line_national_id')
             nombre_linea_actual = None
@@ -649,6 +664,8 @@ def dashboard():
                     continue
                 # Aplicar normalización para agrupar GENVET y MARCA BLANCA como TERCEROS
                 nombre_linea_actual = normalizar_linea_comercial(nombre_linea_original)
+            # NOTA: Si no tiene linea_comercial, nombre_linea_actual queda None
+            # y esa venta NO se sumará a ninguna línea (se ignora silenciosamente)
             
             # También filtrar por canal de ventas
             canal_ventas = sale.get('sales_channel_id')
@@ -656,6 +673,9 @@ def dashboard():
                 nombre_canal = canal_ventas[1].upper()
                 if 'VENTA INTERNACIONAL' in nombre_canal or 'INTERNACIONAL' in nombre_canal:
                     continue
+            else:
+                # Contar ventas sin canal pero NO excluir
+                ventas_sin_canal += 1
             
             # Procesar el balance de la venta
             balance_float = float(sale.get('balance', 0))
@@ -771,6 +791,133 @@ def dashboard():
         
         print(f"📊 Cobertura global: {num_clientes_activos} activos de {total_clientes} cartera = {cobertura_clientes:.1f}%")
         print(f"📊 Variables para KPIs - total_clientes: {total_clientes}, num_clientes_activos: {num_clientes_activos}, cobertura: {cobertura_clientes:.2f}%")
+
+        # --- CÁLCULO DE COBERTURA POR GRUPOS (PARA TABLA) ---
+        print(f"📊 Calculando cobertura por grupos...")
+        
+        # Obtener cartera y activos agrupados por grupo desde Odoo
+        if source_cobertura == 'odoo':
+            try:
+                # Obtener todos los grupos de agr.groups
+                grupos_ids = data_manager.models.execute_kw(
+                    'agr.groups', 'search', [[]]
+                )
+                grupos_data = data_manager.models.execute_kw(
+                    'agr.groups', 'read', [grupos_ids], {'fields': ['id', 'name']}
+                )
+                grupos_dict = {g['id']: g['name'] for g in grupos_data}
+                print(f"   📋 Encontrados {len(grupos_dict)} grupos en Odoo")
+                
+                datos_cobertura_grupos = []
+                total_cartera_grupos = 0
+                total_activos_grupos = 0
+                
+                for idx, (grupo_id, grupo_nombre) in enumerate(grupos_dict.items(), 1):
+                    print(f"   🔍 Procesando grupo {idx}/{len(grupos_dict)}: {grupo_nombre}")
+                    
+                    # Obtener partners con este grupo (solo IDs)
+                    partners_ids = data_manager.models.execute_kw(
+                        'res.partner', 'search',
+                        [[('groups_ids', 'in', [grupo_id]), ('customer_rank', '>', 0)]],
+                        {'limit': 5000}  # Límite de seguridad
+                    )
+                    
+                    if not partners_ids:
+                        print(f"      ⚠️ Sin partners para {grupo_nombre}")
+                        continue
+                    
+                    print(f"      👥 {len(partners_ids)} partners con grupo {grupo_nombre}")
+                    
+                    # Cartera: partners del grupo que compraron en el año
+                    fecha_inicio_ano_grupos = datetime(año_seleccionado, 1, 1).strftime('%Y-%m-%d')
+                    domain_cartera = [
+                        ('partner_id', 'in', partners_ids),
+                        ('move_id.state', '=', 'posted'),
+                        ('move_id.move_type', 'in', ['out_invoice', 'out_refund']),
+                        ('date', '>=', fecha_inicio_ano_grupos),
+                        ('date', '<=', fecha_fin),
+                        ('product_id', '!=', False)
+                    ]
+                    
+                    cartera_result = data_manager.models.execute_kw(
+                        'account.move.line', 'read_group',
+                        [domain_cartera],
+                        {'fields': ['partner_id'], 'groupby': ['partner_id'], 'lazy': False}
+                    )
+                    cartera_grupo = len(cartera_result)
+                    print(f"      📊 Cartera: {cartera_grupo}")
+                    
+                    # Activos: partners del grupo que compraron en el mes
+                    if cartera_grupo > 0:
+                        domain_activos = [
+                            ('partner_id', 'in', partners_ids),
+                            ('move_id.state', '=', 'posted'),
+                            ('move_id.move_type', 'in', ['out_invoice', 'out_refund']),
+                            ('date', '>=', fecha_inicio),
+                            ('date', '<=', fecha_fin),
+                            ('product_id', '!=', False)
+                        ]
+                        
+                        activos_result = data_manager.models.execute_kw(
+                            'account.move.line', 'read_group',
+                            [domain_activos],
+                            {'fields': ['partner_id'], 'groupby': ['partner_id'], 'lazy': False}
+                        )
+                        activos_grupo = len(activos_result)
+                        print(f"      ✅ Activos: {activos_grupo}")
+                    else:
+                        activos_grupo = 0
+                    
+                    cobertura_grupo = (activos_grupo / cartera_grupo * 100) if cartera_grupo > 0 else 0
+                    
+                    if cartera_grupo > 0:  # Solo agregar grupos con cartera
+                        datos_cobertura_grupos.append({
+                            'grupo': grupo_nombre,
+                            'cartera': cartera_grupo,
+                            'activos': activos_grupo,
+                            'cobertura': cobertura_grupo
+                        })
+                        
+                        total_cartera_grupos += cartera_grupo
+                        total_activos_grupos += activos_grupo
+                
+                # Agregar total
+                datos_cobertura_grupos.append({
+                    'grupo': 'TOTAL GENERAL',
+                    'cartera': total_cartera_grupos,
+                    'activos': total_activos_grupos,
+                    'cobertura': (total_activos_grupos / total_cartera_grupos * 100) if total_cartera_grupos > 0 else 0,
+                    'es_total': True
+                })
+                
+                print(f"✅ Cobertura por grupos calculada: {len(datos_cobertura_grupos)-1} grupos con datos")
+                
+            except Exception as e:
+                print(f"❌ Error calculando cobertura por grupos: {e}")
+                import traceback
+                traceback.print_exc()
+                # En caso de error, crear lista vacía con mensaje
+                datos_cobertura_grupos = [{
+                    'grupo': 'ERROR AL CALCULAR',
+                    'cartera': 0,
+                    'activos': 0,
+                    'cobertura': 0.0,
+                    'es_total': True
+                }]
+        else:
+            # Para Supabase, mostrar solo totales generales
+            total_cartera_todos_canales = sum(cartera_por_canal.values())
+            total_activos_todos_canales = sum(activos_por_canal.values())
+            cobertura_total = (total_activos_todos_canales / total_cartera_todos_canales * 100) if total_cartera_todos_canales > 0 else 0
+            
+            datos_cobertura_grupos = [{
+                'grupo': 'TODOS LOS GRUPOS',
+                'cartera': total_cartera_todos_canales,
+                'activos': total_activos_todos_canales,
+                'cobertura': cobertura_total,
+                'es_total': True
+            }]
+            print(f"📊 Cobertura Supabase: {total_activos_todos_canales}/{total_cartera_todos_canales} = {cobertura_total:.1f}%")
 
         # --- CÁLCULO DE FRECUENCIA DE COMPRA POR LÍNEA COMERCIAL ---
         # Usa la misma agrupación que "Análisis de Clientes por Línea Comercial"
@@ -1686,6 +1833,15 @@ def dashboard():
         # Pre-calcular la venta total para el cálculo de porcentajes
         total_venta = sum(ventas_por_linea.values())
         total_venta_calculado = total_venta # Renombrar para claridad en el bucle
+        
+        # Log de ventas excluidas
+        if ventas_categoria_excluida > 0:
+            print(f"⚠️ Se excluyeron {ventas_categoria_excluida} líneas por categoría excluida [315, 333, 304, 314, 318, 339]")
+        if ventas_sin_linea > 0:
+            print(f"⚠️ Se excluyeron {ventas_sin_linea} líneas de venta sin línea comercial")
+        if ventas_sin_canal > 0:
+            print(f"ℹ️ Se encontraron {ventas_sin_canal} líneas de venta sin canal (pero se procesaron)")
+        print(f"💰 Total venta calculado: {total_venta:,.2f}")
 
         for linea in lineas_comerciales_filtradas:
             meta = metas_del_mes.get(linea['id'], 0)
@@ -1898,6 +2054,7 @@ def dashboard():
             'datos_lineas_tabla': datos_lineas_tabla_sorted,
             'datos_clientes_por_linea': datos_clientes_por_linea,
             'datos_cobertura_canal': datos_cobertura_canal,
+            'datos_cobertura_grupos': datos_cobertura_grupos,
             'cobertura_clientes': cobertura_clientes,  # Agregar cobertura general
             'total_clientes': total_clientes,  # Agregar cartera total
             'num_clientes_activos': num_clientes_activos,  # Agregar clientes activos
@@ -2730,6 +2887,168 @@ def api_mapa_ventas():
     
     except Exception as e:
         print(f"❌ Error en API mapa-ventas: {e}")
+        return {'error': str(e)}, 500
+
+
+@app.route('/api/cobertura-filtrada', methods=['GET'])
+def api_cobertura_filtrada():
+    """API endpoint para obtener cobertura de clientes filtrada por canal de venta"""
+    if 'username' not in session:
+        return {'error': 'No autenticado'}, 401
+    
+    try:
+        # Obtener parámetros
+        mes_str = request.args.get('mes', datetime.now().strftime('%Y-%m'))
+        año = int(request.args.get('año', datetime.now().year))
+        canal_filtro = request.args.get('canal', 'TODOS')
+        
+        print(f"🔍 API Cobertura Filtrada por Canal: mes={mes_str}, año={año}, canal={canal_filtro}")
+        
+        # Parsear mes
+        año_mes, mes_num = mes_str.split('-')
+        mes_int = int(mes_num)
+        año_int = int(año_mes)
+        
+        # Construir fechas
+        fecha_inicio = datetime(año_int, mes_int, 1)
+        ultimo_dia = calendar.monthrange(año_int, mes_int)[1]
+        fecha_fin = datetime(año_int, mes_int, ultimo_dia)
+        fecha_inicio_ano = datetime(año_int, 1, 1)
+        
+        # Determinar fuente de datos
+        source = get_data_source(año_int)
+        
+        if source != 'odoo':
+            # Para Supabase, retornar cobertura general sin desglose por grupos
+            print(f"⚠️ Año {año_int} usa Supabase - retornando cobertura general")
+            return {
+                'success': True,
+                'cobertura': 0.0,
+                'grupos': [{
+                    'grupo': 'DATOS NO DISPONIBLES',
+                    'cartera': 0,
+                    'activos': 0,
+                    'cobertura': 0.0,
+                    'es_total': True
+                }],
+                'canal': canal_filtro,
+                'mensaje': 'Filtrado por canal solo disponible para 2026 en adelante'
+            }
+        
+        # Obtener todos los grupos
+        grupos_ids = data_manager.models.execute_kw(
+            data_manager.db, data_manager.uid, data_manager.password,
+            'agr.groups', 'search', [[]]
+        )
+        grupos_data = data_manager.models.execute_kw(
+            data_manager.db, data_manager.uid, data_manager.password,
+            'agr.groups', 'read', [grupos_ids], {'fields': ['id', 'name']}
+        )
+        grupos_dict = {g['id']: g['name'] for g in grupos_data}
+        
+        print(f"   📋 Grupos encontrados: {len(grupos_dict)}")
+        
+        # Calcular cobertura por grupo
+        datos_grupos = []
+        total_cartera_global = 0
+        total_activos_global = 0
+        
+        # Filtrar grupos según canal (DIGITAL = ECOMMERCE, AIRBNB, EMPLEADOS | NACIONAL = resto)
+        grupos_digitales = ['ECOMMERCE', 'AIRBNB', 'EMPLEADOS']
+        
+        for grupo_id, grupo_nombre in grupos_dict.items():
+            # Aplicar filtro de canal
+            if canal_filtro == 'DIGITAL' and grupo_nombre.upper() not in grupos_digitales:
+                continue
+            elif canal_filtro == 'NACIONAL' and grupo_nombre.upper() in grupos_digitales:
+                continue
+            
+            # Obtener partners con este grupo
+            domain_partners = [('groups_ids', 'in', [grupo_id]), ('customer_rank', '>', 0)]
+            
+            partners_ids = data_manager.models.execute_kw(
+                data_manager.db, data_manager.uid, data_manager.password,
+                'res.partner', 'search', [domain_partners]
+            )
+            
+            if not partners_ids:
+                continue
+            
+            print(f"   🔍 Grupo {grupo_nombre}: {len(partners_ids)} partners")
+            
+            # Cartera: partners del grupo que compraron en el año
+            domain_cartera = [
+                ('partner_id', 'in', partners_ids),
+                ('move_id.state', '=', 'posted'),
+                ('move_id.move_type', 'in', ['out_invoice', 'out_refund']),
+                ('date', '>=', fecha_inicio_ano.strftime('%Y-%m-%d')),
+                ('date', '<=', fecha_fin.strftime('%Y-%m-%d')),
+                ('product_id', '!=', False)
+            ]
+            
+            cartera_result = data_manager.models.execute_kw(
+                data_manager.db, data_manager.uid, data_manager.password,
+                'account.move.line', 'read_group',
+                [domain_cartera],
+                {'fields': ['partner_id'], 'groupby': ['partner_id'], 'lazy': False}
+            )
+            total_cartera = len(cartera_result)
+            
+            # Activos: partners del grupo que compraron en el mes
+            domain_activos = [
+                ('partner_id', 'in', partners_ids),
+                ('move_id.state', '=', 'posted'),
+                ('move_id.move_type', 'in', ['out_invoice', 'out_refund']),
+                ('date', '>=', fecha_inicio.strftime('%Y-%m-%d')),
+                ('date', '<=', fecha_fin.strftime('%Y-%m-%d')),
+                ('product_id', '!=', False)
+            ]
+            
+            activos_result = data_manager.models.execute_kw(
+                data_manager.db, data_manager.uid, data_manager.password,
+                'account.move.line', 'read_group',
+                [domain_activos],
+                {'fields': ['partner_id'], 'groupby': ['partner_id'], 'lazy': False}
+            )
+            total_activos = len(activos_result)
+            
+            cobertura_grupo = (total_activos / total_cartera * 100) if total_cartera > 0 else 0
+            
+            datos_grupos.append({
+                'grupo': grupo_nombre,
+                'cartera': total_cartera,
+                'activos': total_activos,
+                'cobertura': cobertura_grupo
+            })
+            
+            total_cartera_global += total_cartera
+            total_activos_global += total_activos
+        
+        # Agregar total
+        datos_grupos.append({
+            'grupo': 'TOTAL GENERAL',
+            'cartera': total_cartera_global,
+            'activos': total_activos_global,
+            'cobertura': (total_activos_global / total_cartera_global * 100) if total_cartera_global > 0 else 0,
+            'es_total': True
+        })
+        
+        # Calcular cobertura general para el gauge
+        cobertura_general = (total_activos_global / total_cartera_global * 100) if total_cartera_global > 0 else 0
+        
+        print(f"✅ Cobertura calculada: {total_activos_global}/{total_cartera_global} = {cobertura_general:.1f}%")
+        
+        return {
+            'success': True,
+            'cobertura': round(cobertura_general, 1),
+            'grupos': datos_grupos,
+            'canal': canal_filtro
+        }
+    
+    except Exception as e:
+        print(f"❌ Error en API cobertura-filtrada: {e}")
+        import traceback
+        traceback.print_exc()
         return {'error': str(e)}, 500
 
 

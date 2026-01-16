@@ -305,6 +305,10 @@ class SupabaseManager:
         formatted_data = []
         for sale in sales_data:
             # Convertir campos simples de Supabase a formato Odoo [id, "nombre"]
+            # Aplicar abs() para asegurar que todos los valores sean positivos
+            # (igual que se hace en Odoo después de multiplicar por -1)
+            price_subtotal = abs(float(sale.get('price_subtotal', 0)))
+            
             formatted_sale = {
                 'invoice_id': sale.get('invoice_id'),
                 'move_id': [sale.get('invoice_id'), sale.get('invoice_name')] if sale.get('invoice_id') else False,
@@ -320,8 +324,8 @@ class SupabaseManager:
                 'default_code': sale.get('product_code'),
                 'quantity': sale.get('quantity', 0),
                 'price_unit': sale.get('price_unit', 0),
-                'price_subtotal': sale.get('price_subtotal', 0),  # Ya está positivo en Supabase (guardado con abs())
-                'balance': sale.get('price_subtotal', 0),  # Ya está positivo en Supabase
+                'price_subtotal': price_subtotal,
+                'balance': price_subtotal
                 
                 # Campos relacionales convertidos a formato Odoo [id, "nombre"]
                 'commercial_line_national_id': [0, sale.get('linea_comercial')] if sale.get('linea_comercial') else False,
@@ -343,7 +347,8 @@ class SupabaseManager:
                 'ruta': sale.get('ruta'),
                 
                 'tipo_venta': sale.get('tipo_venta'),
-                'categ_id': [0, sale.get('categoria_producto')] if sale.get('categoria_producto') else False,
+                # Agregar ID de categoría si existe en Supabase
+                'categ_id': [sale.get('categoria_id'), sale.get('categoria_producto')] if sale.get('categoria_id') else ([0, sale.get('categoria_producto')] if sale.get('categoria_producto') else False),
                 'categoria_producto': sale.get('categoria_producto')
             }
             formatted_data.append(formatted_sale)
