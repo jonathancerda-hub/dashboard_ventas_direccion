@@ -325,7 +325,7 @@ class SupabaseManager:
                 'quantity': sale.get('quantity', 0),
                 'price_unit': sale.get('price_unit', 0),
                 'price_subtotal': price_subtotal,
-                'balance': price_subtotal
+                'balance': price_subtotal,
                 
                 # Campos relacionales convertidos a formato Odoo [id, "nombre"]
                 'commercial_line_national_id': [0, sale.get('linea_comercial')] if sale.get('linea_comercial') else False,

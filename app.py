@@ -463,6 +463,23 @@ def dashboard():
             cached_data['desde_cache'] = True
             cached_data['años_disponibles'] = años_disponibles
             cached_data['año_seleccionado'] = año_seleccionado
+            
+            # Obtener grupos de venta si no están en caché (para Odoo)
+            if 'grupos_venta' not in cached_data or not cached_data['grupos_venta']:
+                grupos_venta = []
+                try:
+                    if data_source == 'odoo':
+                        grupos_venta = data_manager.models.execute_kw(
+                            data_manager.db, data_manager.uid, data_manager.password,
+                            'agr.groups', 'search_read',
+                            [[]],
+                            {'fields': ['id', 'name'], 'order': 'name'}
+                        )
+                        print(f"📋 Obtenidos {len(grupos_venta)} grupos de venta para filtros (desde caché)")
+                except Exception as e:
+                    print(f"⚠️ Error obteniendo grupos de venta: {e}")
+                cached_data['grupos_venta'] = grupos_venta
+            
             return render_template('dashboard_clean.html', **cached_data)
 
         # Si no hay caché válido, continuar con la obtención de datos
@@ -532,6 +549,20 @@ def dashboard():
         metas_historicas = gs_manager.read_metas_por_linea()
         metas_del_mes_raw = metas_historicas.get(mes_seleccionado, {}).get('metas', {})
         metas_ipn_del_mes_raw = metas_historicas.get(mes_seleccionado, {}).get('metas_ipn', {})
+        
+        # Obtener grupos de venta desde Odoo para filtros del mapa
+        grupos_venta = []
+        try:
+            if data_source == 'odoo':
+                grupos_venta = data_manager.models.execute_kw(
+                    data_manager.db, data_manager.uid, data_manager.password,
+                    'agr.groups', 'search_read',
+                    [[]],
+                    {'fields': ['id', 'name'], 'order': 'name'}
+                )
+                print(f"📋 Obtenidos {len(grupos_venta)} grupos de venta para filtros")
+        except Exception as e:
+            print(f"⚠️ Error obteniendo grupos de venta: {e}")
         
         # Consolidar metas de GENVET con TERCEROS
         metas_del_mes = {}
@@ -2081,7 +2112,8 @@ def dashboard():
             'datos_ecommerce': datos_ecommerce,
             'kpis_ecommerce': kpis_ecommerce,
             'is_admin': is_admin,
-            'desde_cache': False  # Datos frescos
+            'desde_cache': False,  # Datos frescos
+            'grupos_venta': grupos_venta  # Nuevo: Grupos de venta para filtro del mapa
         }
         
         # Guardar en caché para futuras solicitudes.
@@ -2765,6 +2797,7 @@ def api_mapa_ventas():
     try:
         año = int(request.args.get('año', datetime.now().year))
         mes = int(request.args.get('mes', datetime.now().month))
+        canal_filtro = request.args.get('canal', '').upper()  # DIGITAL, NACIONAL, OTROS o '' para todos
         
         # Construir rango de fechas
         fecha_inicio = datetime(año, mes, 1).strftime('%Y-%m-%d')
@@ -2798,6 +2831,97 @@ def api_mapa_ventas():
                 'total_ventas': 0
             }
         
+        # Mapear canales si hay filtro activo
+        cliente_canal_map = {}
+        if canal_filtro:
+            if source == 'supabase':
+                # Para Supabase: Usar campo 'canal' directamente
+                for sale in sales_data:
+                    canal_directo = sale.get('canal', '')
+                    if not canal_directo:
+                        continue
+                    canal_upper = str(canal_directo).upper()
+                    
+                    partner_name = sale.get('partner_name', '')
+                    if not partner_name:
+                        continue
+                    
+                    # Clasificar según nombre del canal
+                    if 'ECOMMERCE' in canal_upper or 'AIRBNB' in canal_upper or 'EMPLEADO' in canal_upper:
+                        cliente_canal_map[partner_name] = 'DIGITAL'
+                    else:
+                        cliente_canal_map[partner_name] = 'NACIONAL'
+            else:
+                # Para Odoo: Query groups_ids desde res.partner y consultar nombres en agr.groups
+                partner_ids = list(set([s.get('partner_id', [0])[0] if isinstance(s.get('partner_id'), list) else s.get('partner_id', 0) for s in sales_data]))
+                partner_ids = [pid for pid in partner_ids if pid and pid != 0]
+                
+                if partner_ids:
+                    try:
+                        # Obtener partners con sus grupos
+                        partners = data_manager.models.execute_kw(
+                            data_manager.db, data_manager.uid, data_manager.password,
+                            'res.partner', 'search_read',
+                            [[['id', 'in', partner_ids]]],
+                            {'fields': ['id', 'name', 'groups_ids']}
+                        )
+                        
+                        # Obtener IDs únicos de grupos
+                        all_group_ids = set()
+                        for partner in partners:
+                            groups = partner.get('groups_ids', [])
+                            if groups:
+                                all_group_ids.update(groups)
+                        
+                        # Consultar nombres de grupos desde agr.groups
+                        group_names = {}
+                        if all_group_ids:
+                            groups_data = data_manager.models.execute_kw(
+                                data_manager.db, data_manager.uid, data_manager.password,
+                                'agr.groups', 'search_read',
+                                [[['id', 'in', list(all_group_ids)]]],
+                                {'fields': ['id', 'name']}
+                            )
+                            group_names = {g['id']: g['name'].upper() for g in groups_data}
+                        
+                        # Crear mapeo tanto por ID como por nombre
+                        for partner in partners:
+                            partner_id = partner.get('id')
+                            partner_name = partner.get('name', '')
+                            groups_ids = partner.get('groups_ids', [])
+                            
+                            canal = 'OTROS'  # Por defecto
+                            
+                            if groups_ids:
+                                # Obtener el nombre del primer grupo
+                                first_group_id = groups_ids[0]
+                                group_name = group_names.get(first_group_id, '')
+                                
+                                # Clasificar según nombre del grupo
+                                if 'ECOMMERCE' in group_name or 'AIRBNB' in group_name or 'EMPLEADO' in group_name:
+                                    canal = 'DIGITAL'
+                                else:
+                                    canal = 'NACIONAL'
+                            else:
+                                # Sin grupo asignado
+                                canal = 'OTROS'
+                            
+                            # Mapear tanto por ID como por nombre
+                            cliente_canal_map[partner_id] = canal
+                            cliente_canal_map[partner_name] = canal
+                        
+                        print(f"🔍 Filtro de canal: {canal_filtro}")
+                        print(f"📊 Canales mapeados: {len(cliente_canal_map)} entradas")
+                        # Contar por tipo
+                        digital = sum(1 for v in cliente_canal_map.values() if v == 'DIGITAL')
+                        nacional = sum(1 for v in cliente_canal_map.values() if v == 'NACIONAL')
+                        otros = sum(1 for v in cliente_canal_map.values() if v == 'OTROS')
+                        print(f"   - DIGITAL: {digital} clientes")
+                        print(f"   - NACIONAL: {nacional} clientes")
+                        print(f"   - OTROS: {otros} clientes")
+                    except Exception as e:
+                        print(f"⚠️ Error obteniendo canales para mapa: {e}")
+        
         # Procesar datos por provincia
         ventas_por_provincia = {}
         clientes_por_provincia = {}
@@ -2808,6 +2932,26 @@ def api_mapa_ventas():
                 if not isinstance(sale, dict):
                     print(f"⚠️ Registro {idx} no es dict: {type(sale)}")
                     continue
+                
+                # Aplicar filtro de canal si está activo
+                if canal_filtro:
+                    # Obtener partner_name e partner_id
+                    partner_info = sale.get('partner_id')
+                    partner_name = sale.get('partner_name', '')
+                    
+                    # Extraer ID si partner_id es lista
+                    if isinstance(partner_info, list) and len(partner_info) > 0:
+                        partner_id = partner_info[0]
+                        if not partner_name and len(partner_info) > 1:
+                            partner_name = partner_info[1]
+                    else:
+                        partner_id = partner_info
+                    
+                    # Buscar canal por ID primero, luego por nombre
+                    canal_cliente = cliente_canal_map.get(partner_id) or cliente_canal_map.get(partner_name, 'OTROS')
+                    
+                    if canal_cliente != canal_filtro:
+                        continue
                 
                 # Obtener provincia (state_id)
                 provincia_info = sale.get('state_id') or sale.get('provincia')

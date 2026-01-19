@@ -236,41 +236,55 @@
 
     <!-- Gráfico de Cobertura de Clientes -->
     <div class="grafico-container" style="margin-top: 30px;">
-        <div class="tabla-header">
-            <h3>📊 Cobertura de Clientes</h3>
+        <div class="tabla-header" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h3 style="margin: 0;">📊 Cobertura de Clientes</h3>
+            
+            <!-- Filtro de Canal -->
+            <div style="position: relative;">
+                <label style="font-size: 12px; color: #666; font-weight: 500; display: block; margin-bottom: 5px;">Filtrar por Canal:</label>
+                <select id="filtroCanalCobertura" 
+                        onchange="filtrarCobertura()"
+                        style="
+                            width: 320px;
+                            padding: 10px 35px 10px 15px;
+                            border: 2px solid #875A7B;
+                            border-radius: 8px;
+                            font-size: 14px;
+                            font-weight: 500;
+                            color: #333;
+                            background-color: #fff;
+                            cursor: pointer;
+                            appearance: none;
+                            transition: all 0.3s ease;
+                            box-shadow: 0 2px 4px rgba(135, 90, 123, 0.1);
+                        ">
+                    <option value="TODOS">📊 Todos los Canales</option>
+                    <option value="NACIONAL">NACIONAL</option>
+                    <option value="DIGITAL">DIGITAL</option>
+                </select>
+                <svg style="position: absolute; right: 12px; bottom: 12px; pointer-events: none; width: 12px; height: 12px;" viewBox="0 0 12 12" fill="none">
+                    <path d="M2 4L6 8L10 4" stroke="#875A7B" stroke-width="2" stroke-linecap="round"/>
+                </svg>
+            </div>
         </div>
 
-        <!-- Grid de 2 columnas -->
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 25px; margin-top: 20px;">
-            <!-- Columna 1: Gauge de cobertura SVG mejorado -->
-            <div class="grafico-container" style="margin: 0;">
-                <div class="tabla-header" style="margin-bottom: 15px;">
-                    <h4 style="margin: 0; font-size: 16px;">Indicador General</h4>
-                </div>
-                <div
-                    style="display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 20px;">
-                    <div class="cobertura-gauge" style="position: relative;">
-                        <svg width="320" height="320" viewBox="0 0 320 320"
-                            style="filter: drop-shadow(0 4px 6px rgba(0,0,0,0.1));">
-                            <!-- Círculo de fondo con gradiente -->
-                            <defs>
-                                <linearGradient id="gaugeGradient" x1="0%" y1="0%" x2="100%" y2="100%">
-                                    <stop offset="0%" style="stop-color:#f0f0f0;stop-opacity:1" />
-                                    <stop offset="100%" style="stop-color:#e0e0e0;stop-opacity:1" />
-                                </linearGradient>
+        <!-- Grid en una sola línea: Gauge + Tabla -->
+        <div style="display: grid; grid-template-columns: 400px 1fr; gap: 30px; align-items: start;">
+            <!-- Columna 1: Gauge de Cobertura -->
+            <div class="grafico-container" style="margin: 0; flex: 0 0 400px;">
+                <div style="position: relative; width: 100%; max-width: 320px; margin: 0 auto;">
+                    <svg width="320" height="320" viewBox="0 0 320 320" style="display: block;">
+                        <defs>
+                            <linearGradient id="gaugeGradient" x1="0%" y1="0%" x2="100%" y2="100%">
+                                <stop offset="0%" style="stop-color:#ff4d4f;stop-opacity:1" />
+                                <stop offset="35%" style="stop-color:#faad14;stop-opacity:1" />
+                                <stop offset="100%" style="stop-color:#52c41a;stop-opacity:1" />
+                            </linearGradient>
+                        </defs>
 
-                                <!-- Gradiente para el progreso -->
-                                <linearGradient id="progressGradient" x1="0%" y1="0%" x2="100%" y2="0%">
-                                    <stop offset="0%" style="stop-color:#ff4d4f;stop-opacity:1" />
-                                    <stop offset="50%" style="stop-color:#ff7a45;stop-opacity:1" />
-                                    <stop offset="65%" style="stop-color:#faad14;stop-opacity:1" />
-                                    <stop offset="100%" style="stop-color:#52c41a;stop-opacity:1" />
-                                </linearGradient>
-                            </defs>
-
-                            <!-- Círculo de fondo -->
-                            <circle cx="160" cy="160" r="130" fill="none" stroke="url(#gaugeGradient)" stroke-width="28"
-                                opacity="0.3" />
+                        <!-- Círculo de fondo -->
+                        <circle cx="160" cy="160" r="130" fill="none" stroke="url(#gaugeGradient)" stroke-width="28"
+                            opacity="0.3" />
 
                             <!-- Marcadores de objetivos con líneas más visibles -->
                             <!-- 50% -->
@@ -315,7 +329,7 @@
 
                     <!-- Leyenda de objetivos debajo del gauge -->
                     <div
-                        style="margin-top: 20px; padding: 12px; background: #f8f9fa; border-radius: 8px; font-size: 12px; width: 100%; max-width: 300px;">
+                        style="margin-top: 20px; padding: 12px; background: #f8f9fa; border-radius: 8px; font-size: 12px; width: 100%; max-width: 300px; margin-left: auto; margin-right: auto;">
                         <div style="font-weight: 600; margin-bottom: 8px; color: #333; text-align: center;">Objetivos
                         </div>
                         <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 6px; font-size: 11px;">
@@ -326,39 +340,38 @@
                                     <div><span style="color: #52c41a;">●</span> 70%+ Excelente</div>
                             </div>
                         </div>
-                    </div>
                 </div>
 
-                <!-- Columna 2: Tabla de cobertura por canal -->
-                <div class="grafico-container" style="margin: 0;">
+                <!-- Columna 2: Tabla de cobertura por grupo -->
+                <div>
                     <div class="tabla-header" style="margin-bottom: 15px;">
-                        <h4 style="margin: 0; font-size: 16px;">Cobertura por Canal</h4>
+                        <h4 style="margin: 0; font-size: 16px;">Cobertura por Grupo</h4>
                     </div>
                     <div style="overflow-y: auto; max-height: 400px;">
                         <table class="tabla-avance" style="font-size: 13px;">
                             <thead>
                                 <tr>
-                                    <th style="width: 35%;">Canal</th>
+                                    <th style="width: 35%;">Grupo</th>
                                     <th style="width: 22%;">Cartera</th>
                                     <th style="width: 22%;">Activos</th>
                                     <th style="width: 21%;">Cobertura</th>
                                 </tr>
                             </thead>
-                            <tbody>
-                                {% for canal in datos_cobertura_canal %}
-                                <tr {% if canal.get('es_total')
+                            <tbody id="tablaGruposCobertura">
+                                {% for grupo in datos_cobertura_grupos %}
+                                <tr {% if grupo.get('es_total')
                                     %}style="background: #f0f2f5; font-weight: 700; border-top: 2px solid #875A7B;" {%
                                     endif %}>
-                                    <td><strong>{{ canal.canal }}</strong></td>
-                                    <td style="text-align: center;">{{ canal.cartera }}</td>
-                                    <td style="text-align: center;">{{ canal.activos }}</td>
+                                    <td><strong>{{ grupo.grupo }}</strong></td>
+                                    <td style="text-align: center;">{{ grupo.cartera }}</td>
+                                    <td style="text-align: center;">{{ grupo.activos }}</td>
                                     <td style="text-align: center;">
                                         <span style="
                                         font-weight: 700;
                                         font-size: 14px;
-                                        color: {% if canal.cobertura >= 70 %}#52c41a{% elif canal.cobertura >= 65 %}#faad14{% elif canal.cobertura >= 50 %}#ff7a45{% else %}#ff4d4f{% endif %};
+                                        color: {% if grupo.cobertura >= 70 %}#52c41a{% elif grupo.cobertura >= 65 %}#faad14{% elif grupo.cobertura >= 50 %}#ff7a45{% else %}#ff4d4f{% endif %};
                                     ">
-                                            {{ "{:.1f}".format(canal.cobertura) }}%
+                                            {{ "{:.1f}".format(grupo.cobertura) }}%
                                         </span>
                                     </td>
                                 </tr>
@@ -952,6 +965,17 @@
                     <div class="map-filters"
                         style="display: flex; flex-wrap: wrap; gap: 15px; margin-bottom: 20px; background: #f8f9fa; padding: 15px; border-radius: 8px; align-items: flex-end;">
                         <div>
+                            <label for="mapa-canal"
+                                style="font-weight: 600; font-size: 12px; display: block; margin-bottom: 5px;">Canal de Venta</label>
+                            <select id="mapa-canal"
+                                style="padding: 5px 8px; border-radius: 4px; border: 1px solid #ccc;">
+                                <option value="">📊 Todos los Canales</option>
+                                <option value="DIGITAL">💻 Digital</option>
+                                <option value="NACIONAL">🏢 Nacional</option>
+                                <option value="OTROS">📦 Otros</option>
+                            </select>
+                        </div>
+                        <div>
                             <label for="mapa-linea-comercial"
                                 style="font-weight: 600; font-size: 12px; display: block; margin-bottom: 5px;">Línea
                                 Comercial</label>
@@ -967,12 +991,12 @@
                         </div>
                         <div>
                             <label for="mapa-grupo"
-                                style="font-weight: 600; font-size: 12px; display: block; margin-bottom: 5px;">Grupo</label>
+                                style="font-weight: 600; font-size: 12px; display: block; margin-bottom: 5px;">Grupo de Venta</label>
                             <select id="mapa-grupo"
                                 style="padding: 5px 8px; border-radius: 4px; border: 1px solid #ccc;">
                                 <option value="">Todos</option>
-                                {% if filtros_mapa and filtros_mapa.grupos %}
-                                {% for grupo in filtros_mapa.grupos %}
+                                {% if grupos_venta %}
+                                {% for grupo in grupos_venta %}
                                 <option value="{{ grupo.id }}">{{ grupo.name }}</option>
                                 {% endfor %}
                                 {% endif %}
@@ -1103,10 +1127,10 @@
                     <!-- Tabla de Detalle -->
                     <div style="margin-top: 20px;">
                         <h4 style="font-size: 14px; font-weight: 600; margin-bottom: 12px; color: #333;">📋 Detalle de
-                            Ventas por Departamento</h4>
+                            Ventas por Departamento <span id="tabla-geo-filtro-info" style="font-size: 12px; color: #875A7B; font-weight: normal;"></span></h4>
                         <div
                             style="max-height: 350px; overflow-y: auto; border: 1px solid #e8e8e8; border-radius: 8px;">
-                            <table style="width: 100%; border-collapse: collapse; font-size: 13px;">
+                            <table id="tabla-geografica" style="width: 100%; border-collapse: collapse; font-size: 13px;">
                                 <thead style="position: sticky; top: 0; background: #fafafa; z-index: 1;">
                                     <tr>
                                         <th
@@ -1773,7 +1797,8 @@
                     mes: '{{ mes_seleccionado }}',
                     dia: '{{ dia_actual }}',
                     año: {{ año_seleccionado }},
-                    mesNombre: '{{ mes_nombre }}'
+                    mesNombre: '{{ mes_nombre }}',
+                    coberturaInicial: {{ kpis.cobertura_clientes|default(0) }}
                 };
 
                 // 2. Funciones de Gráficos (ECharts & Chart.js)
@@ -2415,7 +2440,107 @@
                 circle.style.strokeDashoffset = circumference - (circumference * val / 100);
                 labelEl.textContent = val >= 70 ? 'EXCELENTE' : (val >= 50 ? 'REGULAR' : 'BAJO');
                 labelEl.style.color = val >= 70 ? '#52c41a' : (val >= 50 ? '#faad14' : '#ff4d4f');
+                }
+                
+                function actualizarGraficoCobertura(valorCobertura) {
+                    const circle = document.getElementById('coberturaCircle');
+                    const labelEl = document.getElementById('coberturaLabel');
+                    const valueEl = document.getElementById('coberturaValue');
+                    
+                    if (!circle || !labelEl || !valueEl) return;
+                    
+                    // Validar que valorCobertura sea un número
+                    if (valorCobertura === undefined || valorCobertura === null || isNaN(valorCobertura)) {
+                        console.warn('⚠️ Valor de cobertura inválido:', valorCobertura);
+                        valorCobertura = 0;
                     }
+                    
+                    const radius = 130;
+                    const circumference = 2 * Math.PI * radius;
+                    
+                    // Animar el círculo
+                    circle.style.strokeDashoffset = circumference - (circumference * valorCobertura / 100);
+                    
+                    // Actualizar texto y color
+                    valueEl.textContent = valorCobertura.toFixed(1) + '%';
+                    valueEl.style.color = valorCobertura >= 70 ? '#52c41a' : (valorCobertura >= 50 ? '#faad14' : '#ff4d4f');
+                    
+                    labelEl.textContent = valorCobertura >= 70 ? 'EXCELENTE' : (valorCobertura >= 50 ? 'REGULAR' : 'BAJO');
+                    labelEl.style.color = valorCobertura >= 70 ? '#52c41a' : (valorCobertura >= 50 ? '#faad14' : '#ff4d4f');
+                    
+                    // Actualizar color del stroke del círculo
+                    const strokeColor = valorCobertura >= 70 ? '#52c41a' : (valorCobertura >= 50 ? '#faad14' : '#ff4d4f');
+                    circle.style.stroke = strokeColor;
+                }
+                
+                async function filtrarCobertura() {
+                    const canal = document.getElementById('filtroCanalCobertura').value;
+                    
+                    console.log(`🔍 Filtrando cobertura por canal: ${canal}`);
+                    
+                    try {
+                        // Hacer petición al backend
+                        const params = new URLSearchParams({
+                            mes: globalData.mes,
+                            año: globalData.año,
+                            canal: canal
+                        });
+                        
+                        const response = await fetch(`/api/cobertura-filtrada?${params.toString()}`);
+                        
+                        if (!response.ok) {
+                            throw new Error(`Error ${response.status}: ${response.statusText}`);
+                        }
+                        
+                        const data = await response.json();
+                        
+                        console.log(`✅ Cobertura obtenida:`, data);
+                        
+                        // Validar que los datos estén presentes
+                        if (data.error) {
+                            throw new Error(data.error);
+                        }
+                        
+                        // Actualizar gráfico con validación
+                        const cobertura = data.cobertura !== undefined ? data.cobertura : 0;
+                        actualizarGraficoCobertura(cobertura);
+                        
+                        // Actualizar tabla con grupos
+                        if (data.grupos && Array.isArray(data.grupos)) {
+                            actualizarTablaGruposCobertura(data.grupos);
+                        }
+                        
+                    } catch (error) {
+                        console.error('❌ Error al obtener cobertura filtrada:', error);
+                        // En caso de error, usar valor inicial
+                        actualizarGraficoCobertura(globalData.coberturaInicial);
+                    }
+                }
+                
+                function actualizarTablaGruposCobertura(grupos) {
+                    // Actualizar la tabla de cobertura por grupo
+                    const tbody = document.getElementById('tablaGruposCobertura');
+                    if (!tbody || !grupos) return;
+                    
+                    tbody.innerHTML = grupos.map(item => `
+                        <tr${item.es_total ? ' style="font-weight: bold; background: #f0f2f5; border-top: 2px solid #875A7B;"' : ''}>
+                            <td><strong>${item.grupo}</strong></td>
+                            <td style="text-align: center;">${item.cartera.toLocaleString()}</td>
+                            <td style="text-align: center;">${item.activos.toLocaleString()}</td>
+                            <td style="text-align: center;">
+                                <span style="
+                                    font-weight: 700;
+                                    font-size: 14px;
+                                    color: ${item.cobertura >= 70 ? '#52c41a' : (item.cobertura >= 65 ? '#faad14' : (item.cobertura >= 50 ? '#ff7a45' : '#ff4d4f'))};
+                                ">
+                                    ${item.cobertura.toFixed(1)}%
+                                </span>
+                            </td>
+                        </tr>
+                    `).join('');
+                    
+                    console.log(`✅ Tabla actualizada con ${grupos.length} grupos`);
+                }
 
                 // --- 5. Lógica del Mapa Geográfico ---
 
@@ -2568,15 +2693,15 @@
                                 }
                                 
                                 const ventaFormato = datosDpto.value.toLocaleString('es-PE', {
-                                    minimumFractionDigits: 2,
-                                    maximumFractionDigits: 2
+                                    minimumFractionDigits: 0,
+                                    maximumFractionDigits: 0
                                 });
                                 
                                 const clientes = datosDpto.clientes || 0;
                                 const ticket = datosDpto.ticket || 0;
                                 const ticketFormato = ticket.toLocaleString('es-PE', {
-                                    minimumFractionDigits: 2,
-                                    maximumFractionDigits: 2
+                                    minimumFractionDigits: 0,
+                                    maximumFractionDigits: 0
                                 });
                                 
                                 return `<div style="padding: 12px; min-width: 240px;">
@@ -2682,6 +2807,62 @@
                     window.addEventListener('resize', () => mapaGeograficoChart.resize());
                 }
 
+                function actualizarTablaGeografica(data, canalFiltro) {
+                    const tbody = document.querySelector('#tabla-geografica tbody');
+                    const infoSpan = document.getElementById('tabla-geo-filtro-info');
+                    
+                    if (!tbody) return;
+                    
+                    // Actualizar info del filtro
+                    if (canalFiltro) {
+                        const nombreCanal = canalFiltro === 'DIGITAL' ? 'Digital' : 
+                                          canalFiltro === 'NACIONAL' ? 'Nacional' : 'Otros';
+                        infoSpan.textContent = `(Filtrado por: ${nombreCanal})`;
+                    } else {
+                        infoSpan.textContent = '';
+                    }
+                    
+                    // Limpiar tabla
+                    tbody.innerHTML = '';
+                    
+                    if (!data || data.length === 0) {
+                        tbody.innerHTML = '<tr><td colspan="5" style="padding: 20px; text-align: center; color: #999;">No hay datos geográficos para el filtro seleccionado.</td></tr>';
+                        return;
+                    }
+                    
+                    // Ordenar por ventas descendente
+                    const sortedData = [...data].sort((a, b) => b.value - a.value);
+                    
+                    // Calcular total para participación
+                    const totalVentas = sortedData.reduce((sum, item) => sum + (item.value || 0), 0);
+                    
+                    // Generar filas
+                    sortedData.forEach((item, index) => {
+                        const participacion = totalVentas > 0 ? (item.value / totalVentas * 100) : 0;
+                        const bgColor = index < 3 ? 'background: #f6ffed;' : '';
+                        
+                        let icono = '📍';
+                        if (index === 0) icono = '🥇';
+                        else if (index === 1) icono = '🥈';
+                        else if (index === 2) icono = '🥉';
+                        
+                        const row = `
+                            <tr style="border-bottom: 1px solid #f0f0f0; ${bgColor}">
+                                <td style="padding: 10px;">${icono} ${item.name}</td>
+                                <td style="padding: 10px; text-align: right; font-weight: 600;">S/ ${Math.round(item.value).toLocaleString('es-PE')}</td>
+                                <td style="padding: 10px; text-align: center;">${item.clientes || 0}</td>
+                                <td style="padding: 10px; text-align: right;">
+                                    <div style="display: flex; align-items: center; justify-content: flex-end; gap: 8px;">
+                                        <span style="font-weight: 600; color: #52c41a;">${participacion.toFixed(1)}%</span>
+                                    </div>
+                                </td>
+                                <td style="padding: 10px; text-align: right; color: #666;">S/ ${Math.round(item.ticket_promedio || 0).toLocaleString('es-PE')}</td>
+                            </tr>
+                        `;
+                        tbody.innerHTML += row;
+                    });
+                }
+
                 async function inicializarMapaGeografico() {
                     const container = document.getElementById('graficoMapaGeografico');
                     if (!container) {
@@ -2701,7 +2882,7 @@
                         console.log('✅ GeoJSON de Perú cargado');
                         
                         // Cargar datos del mapa desde la API
-                        const mapaData = await fetchMapaData();
+                        let mapaData = await fetchMapaData();
                         
                         if (mapaData && mapaData.length > 0) {
                             dibujarMapaGeografico(container, geoJson, mapaData);
@@ -2710,10 +2891,76 @@
                             console.warn('⚠️ No hay datos para el mapa');
                         }
                         
-                        // Event listener para filtros (deshabilitado por ahora)
+                        // Event listener para filtro de canal
                         const btnFiltros = document.getElementById('mapa-aplicar-filtros');
                         if (btnFiltros) {
-                            btnFiltros.style.display = 'none'; // Ocultar filtros no implementados
+                            btnFiltros.addEventListener('click', async () => {
+                                const canalSeleccionado = document.getElementById('mapa-canal').value;
+                                
+                                console.log('🔍 Aplicando filtro de canal:', canalSeleccionado);
+                                
+                                // Crear overlay de loading sin destruir el contenedor
+                                const loadingOverlay = document.createElement('div');
+                                loadingOverlay.style.cssText = 'position: absolute; top: 0; left: 0; right: 0; bottom: 0; background: rgba(255,255,255,0.8); display: flex; align-items: center; justify-content: center; z-index: 9999;';
+                                loadingOverlay.innerHTML = '<div class="spinner-border" role="status"></div><span style="margin-left: 10px;">Cargando mapa filtrado...</span>';
+                                container.style.position = 'relative';
+                                container.appendChild(loadingOverlay);
+                                
+                                try {
+                                    // Extraer mes numérico de globalData.mes (formato: 'YYYY-MM')
+                                    const [año, mes] = globalData.mes.split('-');
+                                    
+                                    // Construir URL con parámetro de canal
+                                    const url = new URL('/api/mapa-ventas', window.location.origin);
+                                    url.searchParams.set('año', globalData.año);
+                                    url.searchParams.set('mes', mes);
+                                    if (canalSeleccionado) {
+                                        url.searchParams.set('canal', canalSeleccionado);
+                                    }
+                                    
+                                    console.log('📡 Llamando a:', url.toString());
+                                    
+                                    const response = await fetch(url);
+                                    const result = await response.json();
+                                    
+                                    console.log('📦 Respuesta recibida:', result);
+                                    
+                                    // Remover loading overlay
+                                    loadingOverlay.remove();
+                                    
+                                    if (result.success && result.data && result.data.length > 0) {
+                                        mapaData = result.data; // Reasignar la variable let
+                                        console.log(`✅ Mapa filtrado: ${result.data.length} provincias`);
+                                        
+                                        // Limpiar el chart existente
+                                        if (mapaGeograficoChart) {
+                                            mapaGeograficoChart.dispose();
+                                            mapaGeograficoChart = null;
+                                        }
+                                        
+                                        // Redibujar el mapa
+                                        dibujarMapaGeografico(container, geoJson, mapaData);
+                                        
+                                        // Actualizar tabla geográfica
+                                        actualizarTablaGeografica(mapaData, canalSeleccionado);
+                                        
+                                        console.log(`✅ Mapa actualizado con filtro: ${canalSeleccionado || 'Todos'}`);
+                                    } else if (result.success && (!result.data || result.data.length === 0)) {
+                                        container.innerHTML = '<div style="display: flex; align-items: center; justify-content: center; height: 500px; color: #999;">No hay datos para el canal seleccionado</div>';
+                                        
+                                        // Limpiar tabla
+                                        actualizarTablaGeografica([], canalSeleccionado);
+                                        
+                                        console.warn('⚠️ No hay datos para el filtro:', canalSeleccionado);
+                                    } else {
+                                        throw new Error(result.error || 'No se pudieron obtener los datos');
+                                    }
+                                } catch (error) {
+                                    console.error('❌ Error al filtrar mapa:', error);
+                                    loadingOverlay.remove();
+                                    container.innerHTML = '<div style="display: flex; align-items: center; justify-content: center; height: 500px; color: #999;">Error al cargar el mapa filtrado: ' + error.message + '</div>';
+                                }
+                            });
                         }
                         
                     } catch (error) {
