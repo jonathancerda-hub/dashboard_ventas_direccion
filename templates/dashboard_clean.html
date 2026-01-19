@@ -1813,26 +1813,115 @@
                     if (!canvas || !globalData.tendencia || globalData.tendencia.length === 0) return;
                     const ctx = canvas.getContext('2d');
 
-                    // Cálculo de línea de tendencia (Regresión Lineal)
+                    // Verificar cuántos meses tienen datos reales (venta > 0)
                     const data = globalData.tendencia.map(d => d.venta);
-                    const n = data.length;
-                    let sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
-                    for (let i = 0; i < n; i++) {
-                        sumX += i;
-                        sumY += data[i];
-                        sumXY += i * data[i];
-                        sumXX += i * i;
+                    const mesesConDatos = data.filter(v => v > 0).length;
+                    const añoActual = {{ año_seleccionado }};
+                    
+                    // Si hay menos de 3 meses con datos, usar el año anterior para calcular la tendencia
+                    let trendData = [];
+                    let usandoAñoAnterior = false;
+                    
+                    if (mesesConDatos < 3) {
+                        console.log(`⚠️ Solo ${mesesConDatos} meses con datos. Calculando tendencia con año anterior (${añoActual - 1})`);
+                        usandoAñoAnterior = true;
+                        
+                        // Fetch datos del año anterior para calcular tendencia
+                        fetch(`/api/tendencia?año=${añoActual - 1}`)
+                            .then(response => response.json())
+                            .then(dataAnterior => {
+                                if (dataAnterior.success && dataAnterior.tendencia) {
+                                    const dataAñoAnterior = dataAnterior.tendencia.map(d => d.venta);
+                                    const n = dataAñoAnterior.length;
+                                    
+                                    // Calcular regresión lineal con datos del año anterior
+                                    let sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
+                                    for (let i = 0; i < n; i++) {
+                                        sumX += i;
+                                        sumY += dataAñoAnterior[i];
+                                        sumXY += i * dataAñoAnterior[i];
+                                        sumXX += i * i;
+                                    }
+                                    const slope = (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX);
+                                    const intercept = (sumY - slope * sumX) / n;
+                                    
+                                    // Aplicar la tendencia al año actual
+                                    const trendData = data.map((_, i) => slope * i + intercept);
+                                    
+                                    // Agregar el dataset de tendencia con puntos visibles
+                                    window.chartTendencia.data.datasets.push({
+                                        label: `Tendencia (basada en ${añoActual - 1})`,
+                                        data: trendData,
+                                        borderColor: '#1890ff',
+                                        borderDash: [3, 3],
+                                        borderWidth: 2,
+                                        fill: false,
+                                        tension: 0,
+                                        pointRadius: 5,
+                                        pointBackgroundColor: '#1890ff',
+                                        pointBorderColor: '#fff',
+                                        pointBorderWidth: 2,
+                                        pointHoverRadius: 7,
+                                        pointHoverBackgroundColor: '#1890ff',
+                                        pointHoverBorderColor: '#fff',
+                                        pointHoverBorderWidth: 2
+                                    });
+                                    
+                                    // Configurar tooltip para mostrar valores estimados
+                                    if (!window.chartTendencia.options.plugins.tooltip) {
+                                        window.chartTendencia.options.plugins.tooltip = {};
+                                    }
+                                    window.chartTendencia.options.plugins.tooltip.callbacks = {
+                                        label: function(context) {
+                                            const datasetLabel = context.dataset.label || '';
+                                            const value = context.parsed.y;
+                                            const formattedValue = 'S/ ' + value.toLocaleString('es-PE', {minimumFractionDigits: 0, maximumFractionDigits: 0});
+                                            
+                                            if (datasetLabel.includes('Tendencia')) {
+                                                return `${datasetLabel}: ${formattedValue} (estimado)`;
+                                            }
+                                            return `${datasetLabel}: ${formattedValue}`;
+                                        }
+                                    };
+                                    
+                                    window.chartTendencia.update();
+                                }
+                            })
+                            .catch(error => console.error('Error al cargar datos del año anterior:', error));
+                    } else {
+                        // Cálculo normal de línea de tendencia (Regresión Lineal)
+                        const n = data.length;
+                        let sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
+                        for (let i = 0; i < n; i++) {
+                            sumX += i;
+                            sumY += data[i];
+                            sumXY += i * data[i];
+                            sumXX += i * i;
+                        }
+                        const slope = (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX);
+                        const intercept = (sumY - slope * sumX) / n;
+                        trendData = data.map((_, i) => slope * i + intercept);
                     }
-                    const slope = (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX);
-                    const intercept = (sumY - slope * sumX) / n;
-                    const trendData = data.map((_, i) => slope * i + intercept);
 
                     // Dataset inicial
                     const datasets = [
                         { label: 'Venta Real', data: data, borderColor: '#875A7B', backgroundColor: 'rgba(135, 90, 123, 0.1)', fill: true, tension: 0.4 },
-                        { label: 'Meta', data: globalData.tendencia.map(d => d.meta), borderColor: '#faad14', borderDash: [5, 5], fill: false, tension: 0.4 },
-                        { label: 'Tendencia', data: trendData, borderColor: '#1890ff', borderDash: [3, 3], borderWidth: 2, fill: false, tension: 0, pointRadius: 0 }
+                        { label: 'Meta', data: globalData.tendencia.map(d => d.meta), borderColor: '#faad14', borderDash: [5, 5], fill: false, tension: 0.4 }
                     ];
+                    
+                    // Solo agregar tendencia si no estamos usando año anterior (se agregará después del fetch)
+                    if (!usandoAñoAnterior && trendData.length > 0) {
+                        datasets.push({
+                            label: 'Tendencia',
+                            data: trendData,
+                            borderColor: '#1890ff',
+                            borderDash: [3, 3],
+                            borderWidth: 2,
+                            fill: false,
+                            tension: 0,
+                            pointRadius: 0
+                        });
+                    }
 
                     // Crear el gráfico y guardarlo en una variable global
                     window.chartTendencia = new Chart(ctx, {
