@@ -3063,30 +3063,114 @@ def api_cobertura_filtrada():
         source = get_data_source(año_int)
         
         if source != 'odoo':
-            # Para Supabase, retornar cobertura general sin desglose por grupos
-            print(f"⚠️ Año {año_int} usa Supabase - retornando cobertura general")
+            # Para Supabase, calcular cobertura usando campo 'canal'
+            print(f"📊 Año {año_int} usa Supabase - calculando cobertura por canal")
+            
+            # Obtener clientes activos y cartera desde Supabase
+            fecha_inicio_str = fecha_inicio.strftime('%Y-%m-%d')
+            fecha_fin_str = fecha_fin.strftime('%Y-%m-%d')
+            fecha_inicio_ano_str = fecha_inicio_ano.strftime('%Y-%m-%d')
+            
+            # Cartera del año
+            ventas_ano = supabase_manager.get_sales_data(fecha_inicio_ano_str, fecha_fin_str)
+            cartera_ids = set(v.get('partner_id') for v in ventas_ano if v.get('partner_id'))
+            
+            # Activos del mes
+            ventas_mes = supabase_manager.get_sales_data(fecha_inicio_str, fecha_fin_str)
+            activos_ids = set(v.get('partner_id') for v in ventas_mes if v.get('partner_id'))
+            
+            # Agrupar por canal
+            cartera_por_canal = {}
+            activos_por_canal = {}
+            
+            for venta in ventas_ano:
+                canal = venta.get('canal', 'SIN CANAL')
+                partner_id = venta.get('partner_id')
+                if not partner_id:
+                    continue
+                
+                # Clasificar en DIGITAL o NACIONAL
+                canal_upper = str(canal).upper()
+                if 'ECOMMERCE' in canal_upper or 'AIRBNB' in canal_upper or 'EMPLEADO' in canal_upper:
+                    grupo_clasificado = 'DIGITAL'
+                else:
+                    grupo_clasificado = 'NACIONAL'
+                
+                # Aplicar filtro
+                if canal_filtro != 'TODOS' and grupo_clasificado != canal_filtro:
+                    continue
+                
+                if grupo_clasificado not in cartera_por_canal:
+                    cartera_por_canal[grupo_clasificado] = set()
+                cartera_por_canal[grupo_clasificado].add(partner_id)
+            
+            for venta in ventas_mes:
+                canal = venta.get('canal', 'SIN CANAL')
+                partner_id = venta.get('partner_id')
+                if not partner_id:
+                    continue
+                
+                # Clasificar en DIGITAL o NACIONAL
+                canal_upper = str(canal).upper()
+                if 'ECOMMERCE' in canal_upper or 'AIRBNB' in canal_upper or 'EMPLEADO' in canal_upper:
+                    grupo_clasificado = 'DIGITAL'
+                else:
+                    grupo_clasificado = 'NACIONAL'
+                
+                # Aplicar filtro
+                if canal_filtro != 'TODOS' and grupo_clasificado != canal_filtro:
+                    continue
+                
+                if grupo_clasificado not in activos_por_canal:
+                    activos_por_canal[grupo_clasificado] = set()
+                activos_por_canal[grupo_clasificado].add(partner_id)
+            
+            # Construir respuesta
+            datos_grupos = []
+            total_cartera_global = 0
+            total_activos_global = 0
+            
+            for grupo in sorted(cartera_por_canal.keys()):
+                cartera_count = len(cartera_por_canal.get(grupo, set()))
+                activos_count = len(activos_por_canal.get(grupo, set()))
+                cobertura = (activos_count / cartera_count * 100) if cartera_count > 0 else 0
+                
+                datos_grupos.append({
+                    'grupo': grupo,
+                    'cartera': cartera_count,
+                    'activos': activos_count,
+                    'cobertura': cobertura
+                })
+                
+                total_cartera_global += cartera_count
+                total_activos_global += activos_count
+            
+            # Agregar total
+            cobertura_general = (total_activos_global / total_cartera_global * 100) if total_cartera_global > 0 else 0
+            
+            datos_grupos.append({
+                'grupo': 'TOTAL GENERAL',
+                'cartera': total_cartera_global,
+                'activos': total_activos_global,
+                'cobertura': cobertura_general,
+                'es_total': True
+            })
+            
+            print(f"✅ Cobertura Supabase calculada: {total_activos_global}/{total_cartera_global} = {cobertura_general:.1f}%")
+            
             return {
                 'success': True,
-                'cobertura': 0.0,
-                'grupos': [{
-                    'grupo': 'DATOS NO DISPONIBLES',
-                    'cartera': 0,
-                    'activos': 0,
-                    'cobertura': 0.0,
-                    'es_total': True
-                }],
-                'canal': canal_filtro,
-                'mensaje': 'Filtrado por canal solo disponible para 2026 en adelante'
+                'cobertura': round(cobertura_general, 1),
+                'grupos': datos_grupos,
+                'canal': canal_filtro
             }
         
         # Obtener todos los grupos
-        grupos_ids = data_manager.models.execute_kw(
-            data_manager.db, data_manager.uid, data_manager.password,
-            'agr.groups', 'search', [[]]
-        )
         grupos_data = data_manager.models.execute_kw(
             data_manager.db, data_manager.uid, data_manager.password,
-            'agr.groups', 'read', [grupos_ids], {'fields': ['id', 'name']}
+            'agr.groups', 'search_read',
+            [[]],
+            {'fields': ['id', 'name']}
         )
         grupos_dict = {g['id']: g['name'] for g in grupos_data}
         

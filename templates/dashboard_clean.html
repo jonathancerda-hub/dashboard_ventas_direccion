@@ -3052,6 +3052,12 @@
                         totalClientesElement.innerHTML = `📊 <strong>${globalData.clientesRFM.length}</strong> clientes en total`;
                     }
                     
+                    // Cargar cobertura inicial con filtro "TODOS"
+                    if (typeof filtrarCobertura === 'function') {
+                        console.log('🔄 Cargando cobertura inicial...');
+                        filtrarCobertura();
+                    }
+                    
                     console.log('✅ Dashboard cargado satisfactoriamente.');
                 });
             </script>
