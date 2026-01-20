@@ -870,35 +870,76 @@
 
                 <!-- 🔥 HEATMAP DE ACTIVIDAD DE VENTAS -->
                 <div class="grafico-container" style="margin-top: 30px; overflow: hidden;">
-                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
-                        <h3 style="margin: 0;">
+                    <div style="margin-bottom: 20px;">
+                        <h3 style="margin: 0 0 20px 0; display: flex; align-items: center; gap: 10px;">
                             <span style="font-size: 22px;">🔥</span>
-                            Heatmap de Actividad de Ventas - <span id="mesHeatmapTitulo" style="color: #875A7B;">{{ mes_nombre }} {{ año }}</span>
+                            <span>Heatmap de Actividad de Ventas</span>
+                            <span id="mesHeatmapTitulo" style="color: #875A7B; font-size: 16px; font-weight: 500;"></span>
                         </h3>
                         
-                        <!-- Filtro de vendedor -->
-                        <div style="position: relative;">
-                            <select id="filtroVendedorHeatmap" 
-                                    onchange="cambiarVendedorHeatmap()"
-                                    style="
-                                        width: 280px;
-                                        padding: 10px 35px 10px 15px;
-                                        border: 2px solid #875A7B;
-                                        border-radius: 8px;
-                                        font-size: 14px;
-                                        font-weight: 500;
-                                        color: #333;
-                                        background-color: #fff;
-                                        cursor: pointer;
-                                        appearance: none;
-                                        transition: all 0.3s ease;
-                                        box-shadow: 0 2px 4px rgba(135, 90, 123, 0.1);
-                                    ">
-                                <option value="TODOS">📊 Todos los Vendedores</option>
-                            </select>
-                            <svg style="position: absolute; right: 12px; top: 50%; transform: translateY(-50%); pointer-events: none; width: 12px; height: 12px;" viewBox="0 0 12 12" fill="none">
-                                <path d="M2 4L6 8L10 4" stroke="#875A7B" stroke-width="2" stroke-linecap="round"/>
-                            </svg>
+                        <!-- Filtros jerárquicos: Equipo y Vendedor -->
+                        <div style="background: linear-gradient(135deg, #f8f9fa 0%, #ffffff 100%); padding: 20px; border-radius: 12px; border: 1px solid #e8e8e8; box-shadow: 0 2px 8px rgba(0,0,0,0.04);">
+                            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+                                <!-- Filtro de Equipo (Principal) -->
+                                <div>
+                                    <label style="display: block; font-size: 11px; font-weight: 700; color: #875A7B; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px;">
+                                        🏢 Equipo de Ventas
+                                    </label>
+                                    <div style="position: relative;">
+                                        <select id="filtroEquipoHeatmap" 
+                                                onchange="cambiarEquipoHeatmap()"
+                                                style="
+                                                    width: 100%;
+                                                    padding: 12px 40px 12px 16px;
+                                                    border: 2px solid #875A7B;
+                                                    border-radius: 10px;
+                                                    font-size: 14px;
+                                                    font-weight: 600;
+                                                    color: #333;
+                                                    background-color: #fff;
+                                                    cursor: pointer;
+                                                    appearance: none;
+                                                    transition: all 0.3s ease;
+                                                    box-shadow: 0 2px 6px rgba(135, 90, 123, 0.15);
+                                                ">
+                                            <option value="TODOS">📊 Todos los Equipos</option>
+                                        </select>
+                                        <svg style="position: absolute; right: 14px; top: 50%; transform: translateY(-50%); pointer-events: none; width: 14px; height: 14px;" viewBox="0 0 12 12" fill="none">
+                                            <path d="M2 4L6 8L10 4" stroke="#875A7B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                        </svg>
+                                    </div>
+                                </div>
+                                
+                                <!-- Filtro de Vendedor (Subfiltro) -->
+                                <div>
+                                    <label style="display: block; font-size: 11px; font-weight: 700; color: #666; margin-bottom: 8px; text-transform: uppercase; letter-spacing: 0.5px;">
+                                        👤 Vendedor
+                                    </label>
+                                    <div style="position: relative;">
+                                        <select id="filtroVendedorHeatmap" 
+                                                onchange="cambiarVendedorHeatmap()"
+                                                style="
+                                                    width: 100%;
+                                                    padding: 12px 40px 12px 16px;
+                                                    border: 2px solid #d9d9d9;
+                                                    border-radius: 10px;
+                                                    font-size: 14px;
+                                                    font-weight: 500;
+                                                    color: #333;
+                                                    background-color: #fff;
+                                                    cursor: pointer;
+                                                    appearance: none;
+                                                    transition: all 0.3s ease;
+                                                    box-shadow: 0 2px 4px rgba(0, 0, 0, 0.06);
+                                                ">
+                                            <option value="TODOS">📊 Todos los Vendedores</option>
+                                        </select>
+                                        <svg style="position: absolute; right: 14px; top: 50%; transform: translateY(-50%); pointer-events: none; width: 14px; height: 14px;" viewBox="0 0 12 12" fill="none">
+                                            <path d="M2 4L6 8L10 4" stroke="#666" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+                                        </svg>
+                                    </div>
+                                </div>
+                            </div>
                         </div>
                     </div>
 
@@ -1775,6 +1816,7 @@
                     rfmPorCanal: {{ segmentos_por_canal|default({})|tojson|safe }}, // Nuevo: RFM por canal
                     clientesRFM: {{ clientes_rfm|default([])|tojson|safe }}, // Nuevo: Lista completa de clientes
                     heatmap: {{ heatmap_ventas|default([])|tojson|safe }},
+                    heatmapEquipos: {{ heatmap_equipos|default([])|tojson|safe }},  // Lista de equipos de ventas
                     heatmapVendedores: {{ heatmap_vendedores|default([])|tojson|safe }},  // Lista de vendedores
                     heatmapPorVendedor: {{ heatmap_por_vendedor|default({})|tojson|safe }},  // Datos por vendedor
                     mapa: {{ mapa_ventas_data|default([])|tojson|safe }},      // ANUAL
@@ -2389,34 +2431,87 @@
                     const chartDom = document.getElementById('graficoHeatmapVentas');
                     if (!chartDom || !globalData.heatmap || globalData.heatmap.length === 0) return;
                     
-                    // Inicializar con datos de todos los vendedores
-                    window.vendedorHeatmapActivo = 'TODOS';
+                    // Mapeo de traducción de equipos
+                    const traduccionEquipos = {
+                        'Sales': 'AGROVET',
+                        'INTERPET': 'INTERPET',
+                        'PETMEDICA': 'PETMEDICA',
+                        'ECOMMERCE': 'ECOMMERCE'
+                    };
                     
-                    // Poblar el select de vendedores
-                    const selectVendedor = document.getElementById('filtroVendedorHeatmap');
-                    if (selectVendedor && globalData.heatmapVendedores) {
-                        selectVendedor.innerHTML = '<option value="TODOS">📊 Todos los Vendedores</option>';
-                        globalData.heatmapVendedores.forEach(vendedor => {
-                            const option = document.createElement('option');
-                            option.value = vendedor.id;
-                            option.textContent = `${vendedor.nombre} (S/ ${vendedor.total_ventas.toLocaleString('es-PE', {minimumFractionDigits: 0})})`;
-                            selectVendedor.appendChild(option);
+                    // Aplicar traducciones a los equipos
+                    if (globalData.heatmapEquipos) {
+                        globalData.heatmapEquipos.forEach(equipo => {
+                            if (traduccionEquipos[equipo.nombre]) {
+                                equipo.nombre = traduccionEquipos[equipo.nombre];
+                            }
                         });
                     }
                     
+                    // Inicializar con datos de todos los equipos y vendedores
+                    window.equipoHeatmapActivo = 'TODOS';
+                    window.vendedorHeatmapActivo = 'TODOS';
+                    
+                    // Poblar el select de equipos
+                    const selectEquipo = document.getElementById('filtroEquipoHeatmap');
+                    if (selectEquipo && globalData.heatmapEquipos) {
+                        selectEquipo.innerHTML = '<option value="TODOS">📊 Todos los Equipos</option>';
+                        globalData.heatmapEquipos.forEach(equipo => {
+                            const option = document.createElement('option');
+                            option.value = equipo.id;
+                            option.textContent = `${equipo.nombre} (${equipo.num_miembros} miembros - S/ ${equipo.total_ventas.toLocaleString('es-PE', {minimumFractionDigits: 0})})`;
+                            selectEquipo.appendChild(option);
+                        });
+                    }
+                    
+                    // Poblar el select de vendedores (inicialmente todos)
+                    poblarVendedores('TODOS');
+                    
                     const myChart = echarts.init(chartDom);
                     
-                    // Calcular suma total para mostrar en el título
-                    const sumaTotal = globalData.heatmap.reduce((sum, d) => sum + d.valor, 0);
-                    document.getElementById('mesHeatmapTitulo').innerHTML = `${globalData.mesNombre} ${globalData.año} <span style="font-size: 14px; color: #52c41a;">(Total: S/ ${sumaTotal.toLocaleString('es-PE', {minimumFractionDigits: 0})})</span>`;
+                    // Preparar datos con información de transacciones
+                    const heatmapConTransacciones = globalData.heatmap.map(item => ({
+                        ...item,
+                        transacciones: item.transacciones || 0
+                    }));
                     
                     const maxVal = Math.max(...globalData.heatmap.map(d => d.valor));
+                    
+                    // Guardar datos actuales para el tooltip
+                    window.heatmapDatosActuales = globalData.heatmap;
+                    
                     myChart.setOption({
                         tooltip: { 
                             position: 'top', 
                             formatter: (p) => {
+                                const dia = p.data[0]; // 0=Lun, 1=Mar, etc.
+                                const semana = p.data[1]; // 0=Sem1, 1=Sem2, etc.
                                 const venta = p.data[2];
-                                return `<strong>Venta:</strong> S/ ${venta.toLocaleString('es-PE', {minimumFractionDigits: 0})}`;
+                                const diasNombres = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
+                                
+                                // Calcular fecha real del día
+                                const primerDia = new Date(globalData.año, parseInt(globalData.mes.split('-')[1]) - 1, 1);
+                                const diaSemanaInicio = primerDia.getDay(); // 0=Dom, 1=Lun, ..., 6=Sáb
+                                
+                                // Calcular cuántos días hay que avanzar desde el inicio del mes
+                                let diasDesdeInicio = semana * 7 + dia;
+                                // Ajustar si el primer día del mes no es lunes
+                                const ajusteInicio = diaSemanaInicio === 0 ? 6 : diaSemanaInicio - 1;
+                                diasDesdeInicio = diasDesdeInicio - ajusteInicio + 1;
+                                
+                                // Calcular el día del mes
+                                const diaDelMes = diasDesdeInicio;
+                                
+                                // Validar que el día esté en rango válido (no mostrar tooltip si está fuera)
+                                if (diaDelMes < 1 || diaDelMes > 31) {
+                                    return '';
+                                }
+                                
+                                let html = `<div style="padding: 5px;">`;
+                                html += `<div style="font-weight: bold; margin-bottom: 5px;">${diasNombres[dia]} ${diaDelMes} ${globalData.mesNombre}</div>`;
+                                html += `<div><strong>💰 Venta:</strong> S/ ${venta.toLocaleString('es-PE', {minimumFractionDigits: 0})}</div>`;
+                                html += `</div>`;
+                                return html;
                             }
                         },
                         grid: { height: '70%', top: '10%' },
@@ -2449,6 +2544,78 @@
                     
                     // Guardar referencia al chart
                     window.heatmapChart = myChart;
+                    
+                    // Establecer título inicial
+                    actualizarHeatmap(globalData.heatmap, 'Todos los Equipos');
+                }
+                
+                function poblarVendedores(equipoId) {
+                    const selectVendedor = document.getElementById('filtroVendedorHeatmap');
+                    if (!selectVendedor || !globalData.heatmapVendedores) return;
+                    
+                    selectVendedor.innerHTML = '<option value="TODOS">📊 Todos los Vendedores</option>';
+                    
+                    // Filtrar vendedores por equipo
+                    const vendedoresFiltrados = equipoId === 'TODOS' 
+                        ? globalData.heatmapVendedores 
+                        : globalData.heatmapVendedores.filter(v => v.equipo_id == equipoId);
+                    
+                    vendedoresFiltrados.forEach(vendedor => {
+                        const option = document.createElement('option');
+                        option.value = vendedor.id;
+                        option.textContent = `${vendedor.nombre} (S/ ${vendedor.total_ventas.toLocaleString('es-PE', {minimumFractionDigits: 0})})`;
+                        selectVendedor.appendChild(option);
+                    });
+                    
+                    // Si no hay vendedores en este equipo, deshabilitar el select
+                    selectVendedor.disabled = vendedoresFiltrados.length === 0;
+                }
+                
+                function cambiarEquipoHeatmap() {
+                    const equipoId = document.getElementById('filtroEquipoHeatmap').value;
+                    window.equipoHeatmapActivo = equipoId;
+                    
+                    console.log(`🔄 Cambiando heatmap a equipo: ${equipoId}`);
+                    
+                    // Actualizar lista de vendedores según el equipo
+                    poblarVendedores(equipoId);
+                    
+                    // Resetear selección de vendedor a TODOS
+                    document.getElementById('filtroVendedorHeatmap').value = 'TODOS';
+                    window.vendedorHeatmapActivo = 'TODOS';
+                    
+                    // Calcular datos del heatmap para el equipo
+                    let datosHeatmap = [];
+                    if (equipoId === 'TODOS') {
+                        datosHeatmap = globalData.heatmap;
+                    } else {
+                        // Sumar datos de todos los vendedores del equipo
+                        const vendedoresEquipo = globalData.heatmapVendedores.filter(v => v.equipo_id == equipoId);
+                        
+                        // Crear matriz vacía
+                        const matrizEquipo = Array(35).fill(0).map((_, idx) => ({
+                            semana: Math.floor(idx / 7),
+                            dia: idx % 7,
+                            valor: 0,
+                            transacciones: 0
+                        }));
+                        
+                        // Sumar ventas de todos los vendedores del equipo
+                        vendedoresEquipo.forEach(vendedor => {
+                            const datosVendedor = globalData.heatmapPorVendedor[vendedor.id] || [];
+                            datosVendedor.forEach(d => {
+                                const idx = d.semana * 7 + d.dia;
+                                matrizEquipo[idx].valor += d.valor;
+                                matrizEquipo[idx].transacciones += (d.transacciones || 0);
+                            });
+                        });
+                        
+                        datosHeatmap = matrizEquipo;
+                    }
+                    
+                    // Actualizar gráfico
+                    actualizarHeatmap(datosHeatmap, equipoId === 'TODOS' ? 'Todos los Equipos' : 
+                        globalData.heatmapEquipos.find(e => e.id == equipoId)?.nombre || 'Equipo');
                 }
                 
                 function cambiarVendedorHeatmap() {
@@ -2459,20 +2626,57 @@
                     
                     // Obtener datos según vendedor seleccionado
                     let datosHeatmap = [];
+                    let nombreMostrar = '';
+                    
+                    const equipoId = window.equipoHeatmapActivo || 'TODOS';
+                    
                     if (vendedorId === 'TODOS') {
-                        datosHeatmap = globalData.heatmap;
+                        // Si el equipo está seleccionado, mostrar datos del equipo
+                        if (equipoId !== 'TODOS') {
+                            // Sumar datos de todos los vendedores del equipo
+                            const vendedoresEquipo = globalData.heatmapVendedores.filter(v => v.equipo_id == equipoId);
+                            
+                            const matrizEquipo = Array(35).fill(0).map((_, idx) => ({
+                                semana: Math.floor(idx / 7),
+                                dia: idx % 7,
+                                valor: 0,
+                                transacciones: 0
+                            }));
+                            
+                            vendedoresEquipo.forEach(vendedor => {
+                                const datosVendedor = globalData.heatmapPorVendedor[vendedor.id] || [];
+                                datosVendedor.forEach(d => {
+                                    const idx = d.semana * 7 + d.dia;
+                                    matrizEquipo[idx].valor += d.valor;
+                                    matrizEquipo[idx].transacciones += (d.transacciones || 0);
+                                });
+                            });
+                            
+                            datosHeatmap = matrizEquipo;
+                            nombreMostrar = globalData.heatmapEquipos.find(e => e.id == equipoId)?.nombre || 'Equipo';
+                        } else {
+                            datosHeatmap = globalData.heatmap;
+                            nombreMostrar = 'Todos';
+                        }
                     } else {
                         datosHeatmap = globalData.heatmapPorVendedor[vendedorId] || [];
+                        nombreMostrar = globalData.heatmapVendedores.find(v => v.id === vendedorId)?.nombre || 'Vendedor';
                     }
+                    
+                    // Actualizar gráfico
+                    actualizarHeatmap(datosHeatmap, nombreMostrar);
+                }
+                
+                function actualizarHeatmap(datosHeatmap, nombreMostrar) {
+                    // Guardar datos actuales para el tooltip
+                    window.heatmapDatosActuales = datosHeatmap;
                     
                     // Calcular suma total
                     const sumaTotal = datosHeatmap.reduce((sum, d) => sum + d.valor, 0);
-                    const vendedorNombre = vendedorId === 'TODOS' ? 'Todos' : 
-                        globalData.heatmapVendedores.find(v => v.id === vendedorId)?.nombre || 'Vendedor';
                     
-                    // Actualizar título
+                    // Actualizar título (sin duplicar año)
                     document.getElementById('mesHeatmapTitulo').innerHTML = 
-                        `${globalData.mesNombre} ${globalData.año} - <span style="color: #875A7B;">${vendedorNombre}</span> ` +
+                        `${globalData.mesNombre} ${globalData.año} - <span style="color: #875A7B;">${nombreMostrar}</span> ` +
                         `<span style="font-size: 14px; color: #52c41a;">(Total: S/ ${sumaTotal.toLocaleString('es-PE', {minimumFractionDigits: 0})})</span>`;
                     
                     // Actualizar gráfico

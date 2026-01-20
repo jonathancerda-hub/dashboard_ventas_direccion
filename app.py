@@ -749,6 +749,13 @@ def dashboard():
                 ciclo_vida_grafico = ciclo_vida if ciclo_vida else 'No definido'
                 ventas_por_ciclo_vida[ciclo_vida_grafico] = ventas_por_ciclo_vida.get(ciclo_vida_grafico, 0) + balance_float
 
+        # Debug: Mostrar ventas IPN calculadas
+        total_ipn = sum(ventas_ipn_por_linea.values())
+        if total_ipn > 0:
+            print(f"💊 IPN calculado: S/ {total_ipn:,.2f} distribuido en {len([v for v in ventas_ipn_por_linea.values() if v > 0])} líneas")
+        else:
+            print(f"⚠️ No se encontraron productos con ciclo_vida='nuevo' en las {len(sales)} ventas procesadas")
+
         # --- Calcular cobertura de clientes ---
         # Primero, obtener el canal de cada cliente desde res.partner
         print("🔍 Obteniendo canales de clientes desde res.partner...")
@@ -824,131 +831,9 @@ def dashboard():
         print(f"📊 Variables para KPIs - total_clientes: {total_clientes}, num_clientes_activos: {num_clientes_activos}, cobertura: {cobertura_clientes:.2f}%")
 
         # --- CÁLCULO DE COBERTURA POR GRUPOS (PARA TABLA) ---
-        print(f"📊 Calculando cobertura por grupos...")
-        
-        # Obtener cartera y activos agrupados por grupo desde Odoo
-        if source_cobertura == 'odoo':
-            try:
-                # Obtener todos los grupos de agr.groups
-                grupos_ids = data_manager.models.execute_kw(
-                    'agr.groups', 'search', [[]]
-                )
-                grupos_data = data_manager.models.execute_kw(
-                    'agr.groups', 'read', [grupos_ids], {'fields': ['id', 'name']}
-                )
-                grupos_dict = {g['id']: g['name'] for g in grupos_data}
-                print(f"   📋 Encontrados {len(grupos_dict)} grupos en Odoo")
-                
-                datos_cobertura_grupos = []
-                total_cartera_grupos = 0
-                total_activos_grupos = 0
-                
-                for idx, (grupo_id, grupo_nombre) in enumerate(grupos_dict.items(), 1):
-                    print(f"   🔍 Procesando grupo {idx}/{len(grupos_dict)}: {grupo_nombre}")
-                    
-                    # Obtener partners con este grupo (solo IDs)
-                    partners_ids = data_manager.models.execute_kw(
-                        'res.partner', 'search',
-                        [[('groups_ids', 'in', [grupo_id]), ('customer_rank', '>', 0)]],
-                        {'limit': 5000}  # Límite de seguridad
-                    )
-                    
-                    if not partners_ids:
-                        print(f"      ⚠️ Sin partners para {grupo_nombre}")
-                        continue
-                    
-                    print(f"      👥 {len(partners_ids)} partners con grupo {grupo_nombre}")
-                    
-                    # Cartera: partners del grupo que compraron en el año
-                    fecha_inicio_ano_grupos = datetime(año_seleccionado, 1, 1).strftime('%Y-%m-%d')
-                    domain_cartera = [
-                        ('partner_id', 'in', partners_ids),
-                        ('move_id.state', '=', 'posted'),
-                        ('move_id.move_type', 'in', ['out_invoice', 'out_refund']),
-                        ('date', '>=', fecha_inicio_ano_grupos),
-                        ('date', '<=', fecha_fin),
-                        ('product_id', '!=', False)
-                    ]
-                    
-                    cartera_result = data_manager.models.execute_kw(
-                        'account.move.line', 'read_group',
-                        [domain_cartera],
-                        {'fields': ['partner_id'], 'groupby': ['partner_id'], 'lazy': False}
-                    )
-                    cartera_grupo = len(cartera_result)
-                    print(f"      📊 Cartera: {cartera_grupo}")
-                    
-                    # Activos: partners del grupo que compraron en el mes
-                    if cartera_grupo > 0:
-                        domain_activos = [
-                            ('partner_id', 'in', partners_ids),
-                            ('move_id.state', '=', 'posted'),
-                            ('move_id.move_type', 'in', ['out_invoice', 'out_refund']),
-                            ('date', '>=', fecha_inicio),
-                            ('date', '<=', fecha_fin),
-                            ('product_id', '!=', False)
-                        ]
-                        
-                        activos_result = data_manager.models.execute_kw(
-                            'account.move.line', 'read_group',
-                            [domain_activos],
-                            {'fields': ['partner_id'], 'groupby': ['partner_id'], 'lazy': False}
-                        )
-                        activos_grupo = len(activos_result)
-                        print(f"      ✅ Activos: {activos_grupo}")
-                    else:
-                        activos_grupo = 0
-                    
-                    cobertura_grupo = (activos_grupo / cartera_grupo * 100) if cartera_grupo > 0 else 0
-                    
-                    if cartera_grupo > 0:  # Solo agregar grupos con cartera
-                        datos_cobertura_grupos.append({
-                            'grupo': grupo_nombre,
-                            'cartera': cartera_grupo,
-                            'activos': activos_grupo,
-                            'cobertura': cobertura_grupo
-                        })
-                        
-                        total_cartera_grupos += cartera_grupo
-                        total_activos_grupos += activos_grupo
-                
-                # Agregar total
-                datos_cobertura_grupos.append({
-                    'grupo': 'TOTAL GENERAL',
-                    'cartera': total_cartera_grupos,
-                    'activos': total_activos_grupos,
-                    'cobertura': (total_activos_grupos / total_cartera_grupos * 100) if total_cartera_grupos > 0 else 0,
-                    'es_total': True
-                })
-                
-                print(f"✅ Cobertura por grupos calculada: {len(datos_cobertura_grupos)-1} grupos con datos")
-                
-            except Exception as e:
-                print(f"❌ Error calculando cobertura por grupos: {e}")
-                import traceback
-                traceback.print_exc()
-                # En caso de error, crear lista vacía con mensaje
-                datos_cobertura_grupos = [{
-                    'grupo': 'ERROR AL CALCULAR',
-                    'cartera': 0,
-                    'activos': 0,
-                    'cobertura': 0.0,
-                    'es_total': True
-                }]
-        else:
-            # Para Supabase, mostrar solo totales generales
-            total_cartera_todos_canales = sum(cartera_por_canal.values())
-            total_activos_todos_canales = sum(activos_por_canal.values())
-            cobertura_total = (total_activos_todos_canales / total_cartera_todos_canales * 100) if total_cartera_todos_canales > 0 else 0
-            
-            datos_cobertura_grupos = [{
-                'grupo': 'TODOS LOS GRUPOS',
-                'cartera': total_cartera_todos_canales,
-                'activos': total_activos_todos_canales,
-                'cobertura': cobertura_total,
-                'es_total': True
-            }]
-            print(f"📊 Cobertura Supabase: {total_activos_todos_canales}/{total_cartera_todos_canales} = {cobertura_total:.1f}%")
+        # DESHABILITADO TEMPORALMENTE: Toma mucho tiempo y hace muchas consultas a Odoo
+        print(f"⚠️ Cálculo de cobertura por grupos deshabilitado (optimización de performance)")
+        datos_cobertura_grupos = []
 
         # --- CÁLCULO DE FRECUENCIA DE COMPRA POR LÍNEA COMERCIAL ---
         # Usa la misma agrupación que "Análisis de Clientes por Línea Comercial"
@@ -1521,17 +1406,116 @@ def dashboard():
         
         # --- HEATMAP DE ACTIVIDAD DE VENTAS ---
         print(f"🔥 Generando heatmap de actividad de ventas para {mes_seleccionado}...")
+        print(f"   📅 Rango de fechas para heatmap: {fecha_inicio} hasta {fecha_fin}")
+        print(f"   📊 Total líneas a procesar: {len(sales_data)}")
         
         # Matriz: Día de semana (0=Lun, 6=Dom) x Semana del mes (0-4)
         heatmap_data = [[0 for _ in range(7)] for _ in range(5)]  # 5 semanas x 7 días
         heatmap_count = [[0 for _ in range(7)] for _ in range(5)]  # Contador para promedios
         
+        # Obtener equipos de ventas y sus miembros
+        print(f"👥 Obteniendo equipos de ventas y sus miembros...")
+        equipos_ventas = {}
+        vendedor_a_equipo = {}  # {vendedor_id: equipo_id}
+        vendedor_nombre_a_equipo = {}  # {nombre_vendedor: equipo_id} para datos de Supabase
+        
+        # Crear equipo especial para vendedores sin equipo
+        EQUIPO_SIN_ASIGNAR = 'sin_equipo'
+        equipos_ventas[EQUIPO_SIN_ASIGNAR] = {
+            'nombre': 'SIN EQUIPO',
+            'nombre_original': 'SIN EQUIPO',
+            'miembros': [],
+            'total_ventas': 0
+        }
+        
+        try:
+            # Obtener todos los equipos de ventas (incluyendo el líder del equipo)
+            teams_ids = data_manager.models.execute_kw(
+                data_manager.db, data_manager.uid, data_manager.password,
+                'crm.team', 'search_read',
+                [[]],
+                {'fields': ['id', 'name', 'member_ids', 'user_id']}
+            )
+            
+            # Mapeo de traducción para nombres que puedan venir en inglés
+            traducciones_equipos = {
+                'Sales': 'AGROVET',
+                'INTERPET': 'INTERPET',
+                'PETMEDICA': 'PETMEDICA',
+                'ECOMMERCE': 'ECOMMERCE',
+                'PETNUTRISCIENCE': 'PETNUTRISCIENCE',
+                'AIRBNB': 'AIRBNB',
+                'ASUNTOS REGULATORIOS': 'ASUNTOS REGULATORIOS',
+                'MARCA BLANCA': 'MARCA BLANCA',
+                'MARKETING': 'MARKETING',
+                'VENTA INTERNACIONAL': 'VENTA INTERNACIONAL',
+                'OFICINA': 'OFICINA',
+                'AVIVET': 'AVIVET'
+            }
+            
+            for team in teams_ids:
+                team_id = team['id']
+                team_name_original = team['name']
+                # Aplicar traducción si existe
+                team_name = traducciones_equipos.get(team_name_original, team_name_original)
+                member_ids = team.get('member_ids', [])
+                
+                # Obtener el líder del equipo (user_id)
+                team_leader = team.get('user_id')
+                leader_id = None
+                if team_leader and isinstance(team_leader, list) and len(team_leader) > 0:
+                    leader_id = team_leader[0]
+                
+                # Crear lista de todos los miembros (incluyendo al líder)
+                all_members = list(member_ids)
+                if leader_id and leader_id not in all_members:
+                    all_members.append(leader_id)
+                
+                equipos_ventas[team_id] = {
+                    'nombre': team_name,
+                    'nombre_original': team_name_original,
+                    'miembros': all_members,  # Ahora incluye al líder
+                    'total_ventas': 0
+                }
+                
+                # Mapear vendedores a equipos por ID (miembros + líder)
+                for member_id in all_members:
+                    vendedor_a_equipo[str(member_id)] = team_id
+                
+            # Obtener nombres de los usuarios (vendedores) para mapeo por nombre
+            if vendedor_a_equipo:
+                user_ids = list(set([int(vid) for vid in vendedor_a_equipo.keys()]))
+                users = data_manager.models.execute_kw(
+                    data_manager.db, data_manager.uid, data_manager.password,
+                    'res.users', 'read',
+                    [user_ids],
+                    {'fields': ['id', 'name']}
+                )
+                
+                # Crear mapeo nombre → equipo
+                for user in users:
+                    user_id = str(user['id'])
+                    user_name = user['name']
+                    if user_id in vendedor_a_equipo:
+                        vendedor_nombre_a_equipo[user_name] = vendedor_a_equipo[user_id]
+                        print(f"   🔗 Mapeado: {user_name} → {equipos_ventas[vendedor_a_equipo[user_id]]['nombre']}")
+                
+            print(f"👥 Equipos de ventas encontrados: {len(equipos_ventas) - 1}")  # -1 para excluir SIN EQUIPO
+            for tid, tdata in list(equipos_ventas.items())[:5]:
+                if tid != EQUIPO_SIN_ASIGNAR:
+                    print(f"   - {tdata['nombre']}: {len(tdata['miembros'])} miembros (IDs: {tdata['miembros']})")
+        except Exception as e:
+            print(f"⚠️ Error obteniendo equipos de ventas: {e}")
+        
         # Rastrear vendedores y sus ventas
-        vendedores_heatmap = {}  # {vendedor_id: {nombre, total_ventas}}
+        vendedores_heatmap = {}  # {vendedor_id: {nombre, total_ventas, equipo_id}}
         heatmap_por_vendedor = {}  # {vendedor_id: [[ventas por día/semana]]}
+        heatmap_count_por_vendedor = {}  # {vendedor_id: [[transacciones por día/semana]]}
         ventas_sin_vendedor = 0
         
         transacciones_procesadas = 0
+        ventas_excluidas_internacional = 0
+        
         for sale in sales_data:
             invoice_date = sale.get('invoice_date')
             if not invoice_date:
@@ -1544,12 +1528,6 @@ def dashboard():
                     continue
             else:
                 fecha_venta = invoice_date
-            
-            # Excluir VENTA INTERNACIONAL
-            linea_comercial = sale.get('commercial_line_national_id')
-            if linea_comercial and isinstance(linea_comercial, list) and len(linea_comercial) > 1:
-                if 'VENTA INTERNACIONAL' in linea_comercial[1].upper():
-                    continue
             
             balance = sale.get('balance', 0)
             if isinstance(balance, str):
@@ -1571,14 +1549,38 @@ def dashboard():
                 
                 # Registrar vendedor
                 if vendedor_id not in vendedores_heatmap:
+                    # Obtener equipo del vendedor
+                    equipo_id = None
+                    
+                    # Si es de Odoo (ID numérico), buscar por ID
+                    if vendedor_id_raw != "0":
+                        equipo_id = vendedor_a_equipo.get(vendedor_id_raw, None)
+                    else:
+                        # Si es de Supabase (ID = 0), buscar por nombre
+                        equipo_id = vendedor_nombre_a_equipo.get(vendedor_nombre, None)
+                    
+                    # Si no tiene equipo, asignar al equipo "SIN EQUIPO"
+                    if not equipo_id:
+                        equipo_id = EQUIPO_SIN_ASIGNAR
+                    
+                    equipo_nombre = equipos_ventas.get(equipo_id, {}).get('nombre', 'Sin equipo')
+                    
                     vendedores_heatmap[vendedor_id] = {
                         'nombre': vendedor_nombre,
-                        'total_ventas': 0
+                        'total_ventas': 0,
+                        'equipo_id': equipo_id,
+                        'equipo_nombre': equipo_nombre
                     }
                     heatmap_por_vendedor[vendedor_id] = [[0 for _ in range(7)] for _ in range(5)]
-                    print(f"   📌 Nuevo vendedor detectado: {vendedor_nombre} (ID: {vendedor_id})")
+                    heatmap_count_por_vendedor[vendedor_id] = [[0 for _ in range(7)] for _ in range(5)]
+                    print(f"   📌 Nuevo vendedor detectado: {vendedor_nombre} (ID: {vendedor_id}) - Equipo: {equipo_nombre}")
                 
                 vendedores_heatmap[vendedor_id]['total_ventas'] += balance
+                
+                # Actualizar ventas del equipo (ahora siempre hay un equipo, incluso si es "SIN EQUIPO")
+                equipo_id = vendedores_heatmap[vendedor_id].get('equipo_id')
+                if equipo_id and equipo_id in equipos_ventas:
+                    equipos_ventas[equipo_id]['total_ventas'] += balance
             else:
                 ventas_sin_vendedor += 1
             
@@ -1595,6 +1597,7 @@ def dashboard():
             # Agregar a matriz del vendedor
             if vendedor_id:
                 heatmap_por_vendedor[vendedor_id][semana_mes][dia_semana] += balance
+                heatmap_count_por_vendedor[vendedor_id][semana_mes][dia_semana] += 1
             
             transacciones_procesadas += 1
         
@@ -1620,7 +1623,7 @@ def dashboard():
                 heatmap_ventas.append({
                     'semana': semana_idx,
                     'dia': dia_idx,
-                    'valor': venta_total,  # Total de ventas del día (no promedio)
+                    'valor': venta_total,
                     'transacciones': count
                 })
                 
@@ -1632,15 +1635,31 @@ def dashboard():
             {
                 'id': vid,
                 'nombre': vdata['nombre'],
-                'total_ventas': vdata['total_ventas']
+                'total_ventas': vdata['total_ventas'],
+                'equipo_id': vdata.get('equipo_id'),
+                'equipo_nombre': vdata.get('equipo_nombre', 'Sin equipo')
             }
             for vid, vdata in vendedores_heatmap.items()
         ]
         lista_vendedores.sort(key=lambda x: x['total_ventas'], reverse=True)
         
+        # Preparar lista de equipos ordenada por ventas
+        lista_equipos = [
+            {
+                'id': tid,
+                'nombre': tdata['nombre'],
+                'total_ventas': tdata['total_ventas'],
+                'num_miembros': len(tdata['miembros'])
+            }
+            for tid, tdata in equipos_ventas.items()
+        ]
+        lista_equipos.sort(key=lambda x: x['total_ventas'], reverse=True)
+        
         print(f"🔥 Heatmap generado: {transacciones_procesadas} transacciones, {celdas_activas} celdas activas")
-        print(f"🔥 Total ventas del mes: S/ {total_ventas_mes:,.0f} - {len(vendedores_heatmap)} vendedores")
+        print(f"🔥 Total ventas del mes (heatmap): S/ {total_ventas_mes:,.0f} - {len(vendedores_heatmap)} vendedores")
         print(f"🔥 Ventas sin vendedor asignado: {ventas_sin_vendedor}")
+        if ventas_excluidas_internacional > 0:
+            print(f"⚠️ Ventas excluidas por VENTA INTERNACIONAL: {ventas_excluidas_internacional}")
         if vendedores_heatmap:
             print(f"🔥 Vendedores detectados:")
             for vid, vdata in sorted(vendedores_heatmap.items(), key=lambda x: x[1]['total_ventas'], reverse=True)[:5]:
@@ -1650,13 +1669,16 @@ def dashboard():
         heatmap_vendedores_data = {}
         for vendedor_id, matriz in heatmap_por_vendedor.items():
             vendedor_heatmap = []
+            matriz_count = heatmap_count_por_vendedor.get(vendedor_id, [[0]*7]*5)
             for semana_idx in range(5):
                 for dia_idx in range(7):
                     venta_total = matriz[semana_idx][dia_idx]
+                    count = matriz_count[semana_idx][dia_idx]
                     vendedor_heatmap.append({
                         'semana': semana_idx,
                         'dia': dia_idx,
-                        'valor': venta_total
+                        'valor': venta_total,
+                        'transacciones': count
                     })
             heatmap_vendedores_data[vendedor_id] = vendedor_heatmap
         
@@ -2100,6 +2122,7 @@ def dashboard():
             'heatmap_semanas': semanas_labels,
             'heatmap_vendedores': lista_vendedores,  # Lista de vendedores del mes
             'heatmap_por_vendedor': heatmap_vendedores_data,  # Datos por vendedor
+            'heatmap_equipos': lista_equipos,  # Lista de equipos de ventas
             'mapa_ventas_data': mapa_ventas_data,
             'datos_geograficos': datos_geograficos_sorted,  # Nuevo: Mapa geográfico
             'datos_productos': datos_productos,

@@ -349,7 +349,10 @@ class SupabaseManager:
                 'tipo_venta': sale.get('tipo_venta'),
                 # Agregar ID de categoría si existe en Supabase
                 'categ_id': [sale.get('categoria_id'), sale.get('categoria_producto')] if sale.get('categoria_id') else ([0, sale.get('categoria_producto')] if sale.get('categoria_producto') else False),
-                'categoria_producto': sale.get('categoria_producto')
+                'categoria_producto': sale.get('categoria_producto'),
+                
+                # Campo crítico para cálculo de IPN (Introducción de Productos Nuevos)
+                'product_life_cycle': sale.get('product_life_cycle')
             }
             formatted_data.append(formatted_sale)
         
