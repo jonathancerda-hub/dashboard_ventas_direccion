@@ -529,8 +529,8 @@
                         <!-- Explicación del gráfico -->
                         <div
                             style="margin-top: 15px; padding: 10px 15px; background: #f8f9fa; border-left: 3px solid #875A7B; border-radius: 4px; font-size: 12px;">
-                            <div style="color: #666; line-height: 1.7;">
-                                <strong style="color: #333;">Evolución mensual</strong> de ventas vs metas para identificar patrones y estacionalidad.<br>
+                            <div class="color: #666; line-height: 1.7;">
+                                <strong id="totalVentaAnual" style="color: #333; font-size: 14px;">Calculando...</strong><br>
                                 <span style="color:#875A7B; font-weight:500;">Muestra siempre los últimos 12 meses.</span>
                             </div>
                         </div>
@@ -1988,6 +1988,13 @@
                         }
                     });
 
+                    // Calcular y mostrar el total de ventas del año
+                    const totalVentaAnual = data.reduce((sum, venta) => sum + venta, 0);
+                    const elementoTotal = document.getElementById('totalVentaAnual');
+                    if (elementoTotal) {
+                        elementoTotal.textContent = `Total ${añoActual}: S/ ${totalVentaAnual.toLocaleString('es-PE', {minimumFractionDigits: 0, maximumFractionDigits: 0})}`;
+                    }
+
                     // Agregar evento al checkbox de comparación
                     const checkbox = document.getElementById('compararAñoSiguiente');
                     if (checkbox) {
@@ -2489,27 +2496,25 @@
                                 const venta = p.data[2];
                                 const diasNombres = ['Lunes', 'Martes', 'Miércoles', 'Jueves', 'Viernes', 'Sábado', 'Domingo'];
                                 
-                                // Calcular fecha real del día
-                                const primerDia = new Date(globalData.año, parseInt(globalData.mes.split('-')[1]) - 1, 1);
-                                const diaSemanaInicio = primerDia.getDay(); // 0=Dom, 1=Lun, ..., 6=Sáb
+                                // Buscar el día del mes en los datos actuales
+                                const datoCelda = window.heatmapDatosActuales.find(
+                                    item => item.dia === dia && item.semana === semana
+                                );
                                 
-                                // Calcular cuántos días hay que avanzar desde el inicio del mes
-                                let diasDesdeInicio = semana * 7 + dia;
-                                // Ajustar si el primer día del mes no es lunes
-                                const ajusteInicio = diaSemanaInicio === 0 ? 6 : diaSemanaInicio - 1;
-                                diasDesdeInicio = diasDesdeInicio - ajusteInicio + 1;
-                                
-                                // Calcular el día del mes
-                                const diaDelMes = diasDesdeInicio;
-                                
-                                // Validar que el día esté en rango válido (no mostrar tooltip si está fuera)
-                                if (diaDelMes < 1 || diaDelMes > 31) {
+                                // Si no existe el dato o es una celda inválida (-1), no mostrar tooltip
+                                if (!datoCelda || datoCelda.valor < 0 || !datoCelda.dia_mes) {
                                     return '';
                                 }
                                 
+                                const diaDelMes = datoCelda.dia_mes;
+                                const transacciones = datoCelda.transacciones || 0;
+                                
                                 let html = `<div style="padding: 5px;">`;
-                                html += `<div style="font-weight: bold; margin-bottom: 5px;">${diasNombres[dia]} ${diaDelMes} ${globalData.mesNombre}</div>`;
+                                html += `<div style="font-weight: bold; margin-bottom: 5px;">${diasNombres[dia]} ${diaDelMes} ${globalData.mesNombre} ${globalData.año}</div>`;
                                 html += `<div><strong>💰 Venta:</strong> S/ ${venta.toLocaleString('es-PE', {minimumFractionDigits: 0})}</div>`;
+                                if (transacciones > 0) {
+                                    html += `<div><strong>📄 Transacciones:</strong> ${transacciones}</div>`;
+                                }
                                 html += `</div>`;
                                 return html;
                             }
@@ -2531,13 +2536,19 @@
                         },
                         series: [{ 
                             type: 'heatmap', 
-                            data: globalData.heatmap.map(item => [item.dia, item.semana, item.valor]),
+                            data: globalData.heatmap
+                                .filter(item => item.valor >= 0)  // Filtrar celdas no válidas
+                                .map(item => [item.dia, item.semana, item.valor]),
                             label: {
                                 show: true,
                                 formatter: function(params) {
                                     return params.value[2] > 0 ? 'S/ ' + (params.value[2] / 1000).toFixed(0) + 'K' : '';
                                 },
                                 fontSize: 10
+                            },
+                            itemStyle: {
+                                borderWidth: 1,
+                                borderColor: '#fff'
                             }
                         }]
                     });
@@ -2636,19 +2647,29 @@
                             // Sumar datos de todos los vendedores del equipo
                             const vendedoresEquipo = globalData.heatmapVendedores.filter(v => v.equipo_id == equipoId);
                             
-                            const matrizEquipo = Array(35).fill(0).map((_, idx) => ({
-                                semana: Math.floor(idx / 7),
-                                dia: idx % 7,
-                                valor: 0,
-                                transacciones: 0
-                            }));
+                            // Inicializar matriz con la estructura base que incluye dia_mes
+                            const matrizEquipo = Array(35).fill(0).map((_, idx) => {
+                                const semana = Math.floor(idx / 7);
+                                const dia = idx % 7;
+                                // Buscar dia_mes desde los datos globales (primera fuente)
+                                const celdaBase = globalData.heatmap.find(h => h.semana === semana && h.dia === dia);
+                                return {
+                                    semana: semana,
+                                    dia: dia,
+                                    valor: 0,
+                                    transacciones: 0,
+                                    dia_mes: celdaBase ? celdaBase.dia_mes : null
+                                };
+                            });
                             
                             vendedoresEquipo.forEach(vendedor => {
                                 const datosVendedor = globalData.heatmapPorVendedor[vendedor.id] || [];
                                 datosVendedor.forEach(d => {
                                     const idx = d.semana * 7 + d.dia;
-                                    matrizEquipo[idx].valor += d.valor;
-                                    matrizEquipo[idx].transacciones += (d.transacciones || 0);
+                                    if (idx < matrizEquipo.length && d.valor >= 0) {
+                                        matrizEquipo[idx].valor += d.valor;
+                                        matrizEquipo[idx].transacciones += (d.transacciones || 0);
+                                    }
                                 });
                             });
                             
@@ -2671,8 +2692,14 @@
                     // Guardar datos actuales para el tooltip
                     window.heatmapDatosActuales = datosHeatmap;
                     
-                    // Calcular suma total
-                    const sumaTotal = datosHeatmap.reduce((sum, d) => sum + d.valor, 0);
+                    console.log('🔍 Datos heatmap para tooltip:', datosHeatmap.slice(0, 10));
+                    console.log('🔍 Total elementos en heatmap:', datosHeatmap.length);
+                    console.log('🔍 Datos semana 0:', datosHeatmap.filter(d => d.semana === 0));
+                    
+                    // Calcular suma total (solo celdas válidas)
+                    const sumaTotal = datosHeatmap
+                        .filter(d => d.valor >= 0)
+                        .reduce((sum, d) => sum + d.valor, 0);
                     
                     // Actualizar título (sin duplicar año)
                     document.getElementById('mesHeatmapTitulo').innerHTML = 
@@ -2681,13 +2708,15 @@
                     
                     // Actualizar gráfico
                     if (window.heatmapChart) {
-                        const maxVal = Math.max(...datosHeatmap.map(d => d.valor), 1);
+                        // Filtrar solo celdas válidas
+                        const datosValidos = datosHeatmap.filter(d => d.valor >= 0);
+                        const maxVal = Math.max(...datosValidos.map(d => d.valor), 1);
                         window.heatmapChart.setOption({
                             visualMap: {
                                 max: maxVal
                             },
                             series: [{
-                                data: datosHeatmap.map(item => [item.dia, item.semana, item.valor])
+                                data: datosValidos.map(item => [item.dia, item.semana, item.valor])
                             }]
                         });
                     }

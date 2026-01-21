@@ -1409,6 +1409,22 @@ def dashboard():
         print(f"   📅 Rango de fechas para heatmap: {fecha_inicio} hasta {fecha_fin}")
         print(f"   📊 Total líneas a procesar: {len(sales_data)}")
         
+        # Calcular el primer lunes del mes para alinear semanas con calendario
+        primer_dia_mes = dt(año_sel_int, mes_sel_int, 1)
+        dia_semana_primer_dia = primer_dia_mes.weekday()  # 0=Lun, 6=Dom
+        
+        # Calcular qué día del mes es el primer lunes
+        if dia_semana_primer_dia == 0:  # El día 1 es lunes
+            primer_lunes = 1
+        else:
+            # Días hasta el próximo lunes
+            dias_hasta_lunes = (7 - dia_semana_primer_dia) % 7
+            if dias_hasta_lunes == 0:
+                dias_hasta_lunes = 7
+            primer_lunes = 1 + dias_hasta_lunes
+        
+        print(f"   📅 Primer lunes del mes: día {primer_lunes}")
+        
         # Matriz: Día de semana (0=Lun, 6=Dom) x Semana del mes (0-4)
         heatmap_data = [[0 for _ in range(7)] for _ in range(5)]  # 5 semanas x 7 días
         heatmap_count = [[0 for _ in range(7)] for _ in range(5)]  # Contador para promedios
@@ -1587,9 +1603,16 @@ def dashboard():
             # Día de la semana (0=Lunes, 6=Domingo)
             dia_semana = fecha_venta.weekday()
             
-            # Semana del mes (0-4)
+            # Calcular semana del mes basándose en calendario real
             dia_mes = fecha_venta.day
-            semana_mes = min((dia_mes - 1) // 7, 4)  # Máximo 5 semanas
+            if dia_mes < primer_lunes:
+                # Días antes del primer lunes = Semana 1
+                semana_mes = 0
+            else:
+                # Días desde el primer lunes, cada 7 días = nueva semana
+                dias_desde_primer_lunes = dia_mes - primer_lunes
+                semana_mes = 1 + (dias_desde_primer_lunes // 7)
+                semana_mes = min(semana_mes, 4)  # Máximo 5 semanas (índice 0-4)
             
             heatmap_data[semana_mes][dia_semana] += balance
             heatmap_count[semana_mes][dia_semana] += 1
@@ -1609,26 +1632,65 @@ def dashboard():
         max_venta_dia = 0
         celdas_activas = 0
         total_ventas_mes = 0
+        ultimo_dia_mes = calendar.monthrange(año_sel_int, mes_sel_int)[1]
         
+        # Crear un mapa de (semana_idx, dia_idx) -> dia_del_mes
+        # Esto nos permite calcular el día del mes para cada celda del heatmap
+        mapa_dias = {}
+        
+        # Para cada día del mes, calcular en qué celda del heatmap debe aparecer
+        for dia_del_mes in range(1, ultimo_dia_mes + 1):
+            fecha = dt(año_sel_int, mes_sel_int, dia_del_mes)
+            dia_semana = fecha.weekday()  # 0=Lun, 6=Dom
+            
+            # Calcular semana usando la misma lógica que al procesar ventas
+            if dia_del_mes < primer_lunes:
+                semana_mes = 0
+            else:
+                dias_desde_primer_lunes = dia_del_mes - primer_lunes
+                semana_mes = 1 + (dias_desde_primer_lunes // 7)
+                semana_mes = min(semana_mes, 4)
+            
+            mapa_dias[(semana_mes, dia_semana)] = dia_del_mes
+        
+        # Debug: mostrar mapa de días para semana 0
+        print(f"   🗓️ Mapa de días - Semana 0: {[(k, v) for k, v in mapa_dias.items() if k[0] == 0]}")
+        
+        # Ahora construir el array para el frontend
         for semana_idx in range(5):
             for dia_idx in range(7):
+                # Buscar si existe un día del mes para esta celda
+                dia_del_mes = mapa_dias.get((semana_idx, dia_idx))
+                
                 venta_total = heatmap_data[semana_idx][dia_idx]
                 count = heatmap_count[semana_idx][dia_idx]
                 
-                if count > 0:
-                    celdas_activas += 1
-                
-                total_ventas_mes += venta_total
-                
-                heatmap_ventas.append({
-                    'semana': semana_idx,
-                    'dia': dia_idx,
-                    'valor': venta_total,
-                    'transacciones': count
-                })
-                
-                if venta_total > max_venta_dia:
-                    max_venta_dia = venta_total
+                if dia_del_mes:
+                    # Celda válida con un día real del mes
+                    if count > 0:
+                        celdas_activas += 1
+                    
+                    total_ventas_mes += venta_total
+                    
+                    heatmap_ventas.append({
+                        'semana': semana_idx,
+                        'dia': dia_idx,
+                        'valor': venta_total,
+                        'transacciones': count,
+                        'dia_mes': dia_del_mes
+                    })
+                    
+                    if venta_total > max_venta_dia:
+                        max_venta_dia = venta_total
+                else:
+                    # Celda vacía (día que no existe en este mes)
+                    heatmap_ventas.append({
+                        'semana': semana_idx,
+                        'dia': dia_idx,
+                        'valor': -1,  # -1 indica celda no válida
+                        'transacciones': 0,
+                        'dia_mes': None
+                    })
         
         # Preparar lista de vendedores ordenada por ventas
         lista_vendedores = [
@@ -1670,16 +1732,33 @@ def dashboard():
         for vendedor_id, matriz in heatmap_por_vendedor.items():
             vendedor_heatmap = []
             matriz_count = heatmap_count_por_vendedor.get(vendedor_id, [[0]*7]*5)
+            
             for semana_idx in range(5):
                 for dia_idx in range(7):
+                    # Usar el mismo mapa de días que creamos antes
+                    dia_del_mes = mapa_dias.get((semana_idx, dia_idx))
+                    
                     venta_total = matriz[semana_idx][dia_idx]
                     count = matriz_count[semana_idx][dia_idx]
-                    vendedor_heatmap.append({
-                        'semana': semana_idx,
-                        'dia': dia_idx,
-                        'valor': venta_total,
-                        'transacciones': count
-                    })
+                    
+                    if dia_del_mes:
+                        vendedor_heatmap.append({
+                            'semana': semana_idx,
+                            'dia': dia_idx,
+                            'valor': venta_total,
+                            'transacciones': count,
+                            'dia_mes': dia_del_mes
+                        })
+                    else:
+                        # Celda inválida
+                        vendedor_heatmap.append({
+                            'semana': semana_idx,
+                            'dia': dia_idx,
+                            'valor': -1,
+                            'transacciones': 0,
+                            'dia_mes': None
+                        })
+            
             heatmap_vendedores_data[vendedor_id] = vendedor_heatmap
         
         # --- CLIENTES EN RIESGO ---
