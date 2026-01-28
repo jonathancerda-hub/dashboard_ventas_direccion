@@ -44,6 +44,9 @@ python limpiar_cache.py
 
 # 5. Inspeccionar caché actual
 python inspeccionar_cache.py
+
+# 6. Actualizar datos históricos 2025 desde Odoo
+python update_supabase_lifecycle.py
 ```
 
 ---
@@ -190,6 +193,8 @@ dashboard-ventas/
 ├── limpiar_cache.py                   # Limpieza manual de caché
 ├── inspeccionar_cache.py              # Inspección de archivos caché
 ├── generate_cache.py                  # Pre-generación de caché
+├── update_supabase_lifecycle.py       # Actualización campos desde Odoo a Supabase
+├── verificar_ipn_por_mes.py           # Verificación valores IPN por mes
 │
 ├── templates/
 │   ├── dashboard_clean.html (2,324)   # UI principal del dashboard
@@ -238,6 +243,7 @@ update_map.py                          # Actualización mapa geográfico
 ```sql
 - date_order          # Fecha de la orden
 - partner_name        # Nombre del cliente
+- product_id          # ID del producto (relacional)
 - product_name        # Nombre del producto
 - category_name       # Categoría del producto
 - price_unit          # Precio unitario
@@ -245,11 +251,16 @@ update_map.py                          # Actualización mapa geográfico
 - price_subtotal      # Subtotal sin impuestos
 - state               # Estado: 'sale' o 'done'
 - canal               # ⚠️ CAMPO CRÍTICO: Contiene nombre del equipo directamente
+- product_life_cycle  # ⚠️ NUEVO 2026: Ciclo de vida (nuevo, maduro, descontinuado)
+                      #    Actualizado vía update_supabase_lifecycle.py desde Odoo
 ```
 
 **ESTADÍSTICAS:**
-- Total registros: 31,982
-- Líneas promedio/mes: ~960
+- Total registros: 31,982 (año 2025 completo)
+- Líneas promedio/mes: ~2,665
+- Campos críticos: 
+  - `canal`: Nombre directo del equipo/canal
+  - `product_life_cycle`: Ciclo de vida del producto (nuevo, maduro, etc.)
 - Valores campo 'canal':
   - ECOMMERCE: 134 líneas/mes
   - AGROVET: 444 líneas/mes
@@ -738,11 +749,223 @@ typeof L  // Debe mostrar "object" no "undefined"
 
 ---
 
+## 🔥 SOLUCIÓN DE PROBLEMAS COMUNES
+
+### ⚠️ Problema: Dashboard muestra datos en 0 o incorrectos para 2025
+
+**SÍNTOMA:** Las tarjetas KPI muestran valores en 0, especialmente IPN (Introducción de Productos Nuevos)
+
+**CAUSA RAÍZ:** Supabase no tiene el campo actualizado o el cache está desactualizado
+
+**SOLUCIÓN PASO A PASO:**
+
+1. **Verificar si el campo existe en Supabase:**
+```python
+# Usar MCP de Supabase para verificar estructura
+mcp_supabase_execute_sql("SELECT column_name FROM information_schema.columns WHERE table_name = 'sales_lines'")
+```
+
+2. **Si falta un campo (ej: product_life_cycle):**
+```python
+# Usar MCP para agregar el campo
+mcp_supabase_apply_migration(
+    name="add_product_lifecycle",
+    query="ALTER TABLE sales_lines ADD COLUMN IF NOT EXISTS product_life_cycle TEXT; 
+           CREATE INDEX IF NOT EXISTS idx_sales_lines_product_life_cycle ON sales_lines(product_life_cycle);"
+)
+```
+
+3. **Poblar el campo desde Odoo:**
+```powershell
+# Ejecutar script de actualización
+python update_supabase_lifecycle.py
+```
+
+**DETALLES DEL SCRIPT `update_supabase_lifecycle.py`:**
+- Escanea TODOS los registros de Supabase (31,982 registros para 2025)
+- Extrae product_ids únicos (~778 productos)
+- Consulta Odoo product.product para obtener el campo faltante
+- Actualiza Supabase en lotes de 1000 registros
+- **IMPORTANTE:** Usa paginación `.range()` para evitar límites de 1000
+
+4. **Actualizar SupabaseManager para incluir el campo:**
+```python
+# En supabase_manager.py, método get_dashboard_data()
+formatted_sale = {
+    # ... otros campos ...
+    'product_life_cycle': sale.get('product_life_cycle')  # ← AGREGAR ESTA LÍNEA
+}
+```
+
+5. **LIMPIAR CACHÉ (CRÍTICO):**
+```powershell
+# Método 1: Script Python
+python limpiar_cache.py
+
+# Método 2: PowerShell (si el script falla)
+Remove-Item -Path "__pycache__\dashboard_cache\*.pkl" -Recurse -Force
+
+# Método 3: CMD directo (más confiable en Windows)
+del "C:\Users\jcerda\Desktop\DashBoard Direccion\dashboard-ventas\__pycache__\dashboard_cache\*.pkl"
+```
+
+6. **Verificar actualización:**
+```python
+# Ejecutar script de verificación
+python verificar_ipn_por_mes.py
+# Debe mostrar valores correctos por mes, no ceros
+```
+
+7. **Recargar dashboard:**
+- Presionar **Ctrl+Shift+R** en el navegador (hard refresh)
+- Navegar a cualquier mes de 2025
+- Verificar en consola del servidor: "💊 IPN calculado: S/ XXX,XXX"
+
+**VALORES ESPERADOS 2025 (IPN):**
+- Enero: S/195,468
+- Febrero: S/1,069,150
+- Marzo: S/1,312,198
+- Abril: S/877,949
+- Mayo: S/1,126,736
+- Junio: S/628,284
+- (etc.)
+
+### ⚠️ Problema: Error "cannot access local variable 'data_source'"
+
+**SÍNTOMA:** Error al cargar datos desde caché
+
+**CAUSA:** Variable `data_source` no definida cuando se carga desde caché
+
+**SOLUCIÓN:**
+1. Limpiar caché con `del "...\*.pkl"`
+2. Dejar que el dashboard regenere el caché desde cero
+3. El error NO aparecerá en datos frescos
+
+### ⚠️ Problema: Script Python encuentra solo 26 productos en lugar de 778
+
+**SÍNTOMA:** `update_supabase_lifecycle.py` muestra "Total productos únicos encontrados: 26"
+
+**CAUSA:** Límite por defecto de Supabase (1000 registros) sin paginación
+
+**SOLUCIÓN:**
+```python
+# Usar paginación explícita en el script
+while True:
+    result = supabase.table('sales_lines')\
+        .select('product_id')\
+        .range(offset, offset + batch_size - 1)\
+        .execute()
+    
+    if not result.data:
+        break
+    
+    # Procesar datos
+    for row in result.data:
+        product_ids.add(row['product_id'])
+    
+    # Si obtuvimos menos que el tamaño de página, no hay más datos
+    if len(result.data) < batch_size:
+        break
+    
+    offset += batch_size
+```
+
+### ⚠️ Problema: Caché no se elimina con Remove-Item
+
+**SÍNTOMA:** PowerShell indica éxito pero los archivos .pkl siguen presentes
+
+**CAUSA:** Bloqueos de archivos en Windows o permisos
+
+**SOLUCIÓN:**
+```powershell
+# Usar comando CMD directamente
+del "C:\Users\jcerda\Desktop\DashBoard Direccion\dashboard-ventas\__pycache__\dashboard_cache\*.pkl"
+
+# Verificar eliminación
+Get-ChildItem "__pycache__\dashboard_cache\"
+# Debe mostrar: "Directory is empty"
+```
+
+### 💡 ESTRATEGIA GENERAL PARA PROBLEMAS
+
+**CUANDO NO SABES QUÉ ESTÁ FALLANDO:**
+
+1. **SIEMPRE LIMPIAR CACHÉ PRIMERO**
+   ```powershell
+   del "__pycache__\dashboard_cache\*.pkl"
+   ```
+
+2. **Verificar datos en Supabase directamente**
+   ```python
+   # Usar MCP para query directo
+   mcp_supabase_execute_sql("SELECT * FROM sales_lines WHERE año = 2025 LIMIT 10")
+   ```
+
+3. **Revisar logs del servidor**
+   - Buscar mensajes de error o warning
+   - Verificar si el campo se está leyendo: "💊 IPN calculado: S/..."
+
+4. **Comparar Supabase vs Odoo**
+   - Campo existe en Odoo: `product.product.product_life_cycle`
+   - Campo debe existir en Supabase: `sales_lines.product_life_cycle`
+   - Script: `update_supabase_lifecycle.py` sincroniza ambos
+
+5. **Hard refresh del navegador**
+   - Ctrl+Shift+R para forzar recarga
+   - Limpia caché del navegador también
+
+---
+
+## 🔧 HERRAMIENTAS MCP (Model Context Protocol)
+
+### Supabase MCP Tools (CRÍTICAS PARA ACTUALIZAR 2025)
+
+**Agregar campos a tabla:**
+```python
+mcp_supabase_apply_migration(
+    name="nombre_migracion",
+    query="ALTER TABLE sales_lines ADD COLUMN nuevo_campo TYPE;"
+)
+```
+
+**Consultar datos:**
+```python
+mcp_supabase_execute_sql(
+    query="SELECT campo FROM sales_lines WHERE condicion LIMIT 100"
+)
+```
+
+**Listar migraciones aplicadas:**
+```python
+mcp_supabase_list_migrations()
+```
+
+**IMPORTANTE:** 
+- Las migraciones se aplican de forma permanente
+- Usar `IF NOT EXISTS` para evitar errores de duplicados
+- Crear índices para campos consultados frecuentemente
+
+### Mantenimiento
+
+**TAREAS SEMANALES:**
+- Verificar logs de errores en consola
+- Revisar tamaño de carpeta `dashboard_cache/` (limpiar si >100MB)
+- Validar autenticación Google OAuth funcionando
+
+**TAREAS MENSUALES:**
+- Actualizar `allowed_users.json` si hay cambios de personal
+- Revisar umbrales RFM vs comportamiento real de clientes
+- Backup de caché del mes anterior
+- Verificar sincronización Supabase ↔ Odoo para campos nuevos
+
+---
+
 ## 🆘 CONTACTO Y SOPORTE
 
 **DESARROLLADOR:** GitHub Copilot (Claude Sonnet 4.5)  
 **FECHA DOCUMENTACIÓN:** Enero 2026  
-**VERSIÓN:** 2.0 - Completa y Detallada para Iteración Diaria
+**VERSIÓN:** 2.1 - Incluye troubleshooting MCP Supabase y gestión de caché  
+**ÚLTIMA ACTUALIZACIÓN:** 20 Enero 2026 - Agregado troubleshooting IPN y MCP tools
 
 ---
 
@@ -751,3 +974,32 @@ typeof L  // Debe mostrar "object" no "undefined"
 ---
 
 *Este documento está diseñado para ser leído al inicio de cada sesión de desarrollo, garantizando contexto completo sobre arquitectura dual de datos, manejo diferenciado del campo 'canal', y requisitos críticos como activación del entorno virtual.*
+
+---
+
+## 🔑 REGLA DE ORO PARA TROUBLESHOOTING
+
+**CUANDO ALGO NO FUNCIONA O MUESTRA DATOS INCORRECTOS:**
+
+1. **SIEMPRE** limpiar caché primero con `del "__pycache__\dashboard_cache\*.pkl"` si hay problemas inexplicables
+2. **VERIFICAR** datos en Supabase con MCP antes de asumir errores de código
+3. **USAR** `update_supabase_lifecycle.py` para sincronizar campos nuevos desde Odoo a Supabase
+4. **CONSULTAR** sección "🔥 Solución de Problemas Comunes" antes de modificar código
+5. **HARD REFRESH** en navegador (Ctrl+Shift+R) después de limpiar caché
+
+**WORKFLOW TÍPICO PARA AGREGAR NUEVO CAMPO A 2025:**
+```
+Odoo tiene campo → Supabase NO tiene campo
+     ↓
+1. MCP: Agregar columna en Supabase
+2. Script: Poblar valores desde Odoo  
+3. Manager: Incluir campo en get_dashboard_data()
+4. Cache: Limpiar archivos .pkl
+5. Browser: Hard refresh (Ctrl+Shift+R)
+     ↓
+Dashboard muestra datos correctamente ✅
+```
+
+---
+
+**FIN DEL DOCUMENTO**

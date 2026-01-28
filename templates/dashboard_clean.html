@@ -175,8 +175,41 @@
         <!-- Tabla de Líneas Comerciales (IZQUIERDA) -->
         {% if datos_lineas_tabla %}
         <div class="tabla-container tabla-ecommerce">
-            <div class="tabla-header">
-                <h3>Ventas por Línea Comercial</h3>
+            <div class="tabla-header" style="display: flex; justify-content: space-between; align-items: center;">
+                <h3 style="margin: 0;">Ventas por Línea Comercial</h3>
+                
+                <!-- Filtro de Canal -->
+                <div style="position: relative;">
+                    <label style="font-size: 12px; color: #666; font-weight: 500; display: block; margin-bottom: 5px;">Canal:</label>
+                    <select id="filtroCanalVentasLinea" 
+                            onchange="filtrarVentasPorLinea()"
+                            style="
+                                width: 200px;
+                                padding: 8px 30px 8px 12px;
+                                border: 2px solid #875A7B;
+                                border-radius: 6px;
+                                font-size: 13px;
+                                font-weight: 500;
+                                color: #2c3e50;
+                                background-color: white;
+                                cursor: pointer;
+                                transition: all 0.2s ease;
+                                appearance: none;
+                                -webkit-appearance: none;
+                                -moz-appearance: none;
+                            "
+                            onmouseover="this.style.borderColor='#6B4563'; this.style.boxShadow='0 2px 8px rgba(135, 90, 123, 0.15)'"
+                            onmouseout="this.style.borderColor='#875A7B'; this.style.boxShadow='none'"
+                            onfocus="this.style.borderColor='#6B4563'; this.style.outline='none'"
+                            onblur="this.style.borderColor='#875A7B'">
+                        <option value="TODOS" selected>📊 Todos los Canales</option>
+                        <option value="DIGITAL">💻 Digital</option>
+                        <option value="NACIONAL">🏢 Nacional</option>
+                    </select>
+                    <svg style="position: absolute; right: 12px; bottom: 12px; pointer-events: none; width: 12px; height: 12px;" viewBox="0 0 12 12" fill="none">
+                        <path d="M2 4L6 8L10 4" stroke="#875A7B" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
+                </div>
             </div>
             <table class="tabla-avance">
                 <thead>
@@ -186,9 +219,9 @@
                         <th style="width: 25%;">% Total Vta.</th>
                     </tr>
                 </thead>
-                <tbody>
+                <tbody id="tablaVentasLinea">
                     {% for linea in datos_lineas_tabla %}
-                    <tr>
+                    <tr data-linea="{{ linea.nombre }}" data-canal="{{ linea.canal }}" data-venta="{{ linea.venta }}" style="{% if linea.canal != 'TODOS' %}display: none;{% endif %}">
                         <td>{{ linea.nombre }}</td>
                         <td>{{ "{:,.0f}".format(linea.venta) }}</td>
                         <td class="porcentaje">{{ "%.1f%%"|format(linea.porcentaje_sobre_total) }}</td>
@@ -196,8 +229,8 @@
                     {% endfor %}
                     <tr class="fila-total">
                         <td><strong>Total</strong></td>
-                        <td><strong>{{ "{:,.0f}".format(kpis.venta_total) }}</strong></td>
-                        <td class="porcentaje"><strong>100.0%</strong></td>
+                        <td><strong id="totalVentaLinea">{{ "{:,.0f}".format(kpis.venta_total) }}</strong></td>
+                        <td class="porcentaje"><strong id="porcentajeTotalVentaLinea">100.0%</strong></td>
                     </tr>
                 </tbody>
             </table>
@@ -207,8 +240,41 @@
         <!-- Tabla de Clientes por Línea Comercial (DERECHA) -->
         {% if datos_clientes_por_linea %}
         <div class="tabla-container tabla-ecommerce">
-            <div class="tabla-header">
-                <h3>Análisis de Clientes por Línea Comercial</h3>
+            <div class="tabla-header" style="display: flex; justify-content: space-between; align-items: center;">
+                <h3 style="margin: 0;">Análisis de Clientes por Línea Comercial</h3>
+                
+                <!-- Filtro de Canal -->
+                <div style="position: relative;">
+                    <label style="font-size: 12px; color: #666; font-weight: 500; display: block; margin-bottom: 5px;">Canal:</label>
+                    <select id="filtroCanalClientesLinea" 
+                            onchange="filtrarClientesPorLinea()"
+                            style="
+                                width: 200px;
+                                padding: 8px 30px 8px 12px;
+                                border: 2px solid #875A7B;
+                                border-radius: 6px;
+                                font-size: 13px;
+                                font-weight: 500;
+                                color: #2c3e50;
+                                background-color: white;
+                                cursor: pointer;
+                                transition: all 0.2s ease;
+                                appearance: none;
+                                -webkit-appearance: none;
+                                -moz-appearance: none;
+                            "
+                            onmouseover="this.style.borderColor='#6B4563'; this.style.boxShadow='0 2px 8px rgba(135, 90, 123, 0.15)'"
+                            onmouseout="this.style.borderColor='#875A7B'; this.style.boxShadow='none'"
+                            onfocus="this.style.borderColor='#6B4563'; this.style.outline='none'"
+                            onblur="this.style.borderColor='#875A7B'">
+                        <option value="TODOS" selected>📊 Todos los Canales</option>
+                        <option value="DIGITAL">💻 Digital</option>
+                        <option value="NACIONAL">🏢 Nacional</option>
+                    </select>
+                    <svg style="position: absolute; right: 12px; bottom: 12px; pointer-events: none; width: 12px; height: 12px;" viewBox="0 0 12 12" fill="none">
+                        <path d="M2 4L6 8L10 4" stroke="#875A7B" stroke-width="2" stroke-linecap="round"/>
+                    </svg>
+                </div>
             </div>
             <table class="tabla-avance">
                 <thead>
@@ -219,9 +285,9 @@
                         <th style="width: 20%;">Ticket/Cliente</th>
                     </tr>
                 </thead>
-                <tbody>
+                <tbody id="tablaClientesLinea">
                     {% for linea in datos_clientes_por_linea %}
-                    <tr>
+                    <tr data-linea="{{ linea.nombre }}" data-canal="{{ linea.canal }}" style="{% if linea.canal != 'TODOS' %}display: none;{% endif %}">
                         <td>{{ linea.nombre }}</td>
                         <td>{{ "{:,.0f}".format(linea.venta) }}</td>
                         <td>{{ linea.num_clientes }}</td>
@@ -2846,6 +2912,95 @@
                     `).join('');
                     
                     console.log(`✅ Tabla actualizada con ${grupos.length} grupos`);
+                }
+
+                // Función para filtrar tabla de clientes por línea comercial según canal
+                function filtrarClientesPorLinea() {
+                    const canal = document.getElementById('filtroCanalClientesLinea').value;
+                    const tbody = document.getElementById('tablaClientesLinea');
+                    
+                    if (!tbody) {
+                        console.warn('⚠️ No se encontró tabla de clientes por línea');
+                        return;
+                    }
+                    
+                    console.log(`🔍 Filtrando clientes por línea - Canal: ${canal}`);
+                    
+                    // Obtener todas las filas
+                    const filas = tbody.querySelectorAll('tr');
+                    
+                    filas.forEach(fila => {
+                        const canalData = fila.getAttribute('data-canal');
+                        
+                        // Mostrar según el filtro seleccionado
+                        if (canal === 'TODOS' && canalData === 'TODOS') {
+                            fila.style.display = '';
+                        } else if (canal === 'DIGITAL' && canalData === 'DIGITAL') {
+                            fila.style.display = '';
+                        } else if (canal === 'NACIONAL' && canalData === 'NACIONAL') {
+                            fila.style.display = '';
+                        } else {
+                            fila.style.display = 'none';
+                        }
+                    });
+                    
+                    // Contar filas visibles
+                    const filasVisibles = Array.from(filas).filter(f => f.style.display !== 'none').length;
+                    console.log(`✅ Mostrando ${filasVisibles} filas para canal "${canal}"`);
+                }
+                
+                // Función para filtrar tabla de ventas por línea comercial según canal
+                function filtrarVentasPorLinea() {
+                    const canal = document.getElementById('filtroCanalVentasLinea').value;
+                    const tbody = document.getElementById('tablaVentasLinea');
+                    
+                    if (!tbody) {
+                        console.warn('⚠️ No se encontró tabla de ventas por línea');
+                        return;
+                    }
+                    
+                    console.log(`🔍 Filtrando ventas por línea - Canal: ${canal}`);
+                    
+                    // Obtener todas las filas (sin incluir fila total)
+                    const filas = tbody.querySelectorAll('tr[data-canal]');
+                    let totalVenta = 0;
+                    let filasVisibles = 0;
+                    
+                    filas.forEach(fila => {
+                        const canalData = fila.getAttribute('data-canal');
+                        const ventaData = parseFloat(fila.getAttribute('data-venta')) || 0;
+                        
+                        // Mostrar según el filtro seleccionado
+                        if (canal === 'TODOS' && canalData === 'TODOS') {
+                            fila.style.display = '';
+                            totalVenta += ventaData;
+                            filasVisibles++;
+                        } else if (canal === 'DIGITAL' && canalData === 'DIGITAL') {
+                            fila.style.display = '';
+                            totalVenta += ventaData;
+                            filasVisibles++;
+                        } else if (canal === 'NACIONAL' && canalData === 'NACIONAL') {
+                            fila.style.display = '';
+                            totalVenta += ventaData;
+                            filasVisibles++;
+                        } else {
+                            fila.style.display = 'none';
+                        }
+                    });
+                    
+                    // Actualizar la fila de totales
+                    const totalVentaElement = document.getElementById('totalVentaLinea');
+                    const porcentajeTotalElement = document.getElementById('porcentajeTotalVentaLinea');
+                    
+                    if (totalVentaElement) {
+                        totalVentaElement.textContent = totalVenta.toLocaleString('es-PE', {minimumFractionDigits: 0, maximumFractionDigits: 0});
+                    }
+                    
+                    if (porcentajeTotalElement) {
+                        porcentajeTotalElement.textContent = '100.0%';
+                    }
+                    
+                    console.log(`✅ Mostrando ${filasVisibles} filas para canal "${canal}" - Total: S/ ${totalVenta.toLocaleString('es-PE')}`);
                 }
 
                 // --- 5. Lógica del Mapa Geográfico ---

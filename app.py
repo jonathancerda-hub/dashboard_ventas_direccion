@@ -455,6 +455,9 @@ def dashboard():
             mes_seleccionado = f"{año_seleccionado}-01"
             año_sel_int = año_seleccionado
             mes_sel_int = 1
+        
+        # Determinar fuente de datos (mover antes del check de caché)
+        data_source = get_data_source(año_sel_int)
 
         # --- REVISAR CACHÉ ANTES DE HACER CÁLCULOS ---
         cached_data = get_cached_data(año_sel_int, mes_sel_int)
@@ -536,10 +539,8 @@ def dashboard():
             fecha_inicio_rfm = fecha_inicio_obj.strftime('%Y-%m-%d')
             fecha_fin_rfm = fecha_fin
             print(f"📅 RFM usando últimos {periodo_rfm_dias} días: {fecha_inicio_rfm} a {fecha_fin_rfm}")
-
-        # Determinar fuente de datos
-        data_source = get_data_source(año_sel_int)
         
+        # data_source ya se definió antes del check de caché (línea ~460)
         if data_source == 'supabase':
             print(f"📊 Obteniendo datos históricos del {año_sel_int} desde Supabase...")
         else:
@@ -670,6 +671,10 @@ def dashboard():
         ventas_por_forma = {}
         clientes_por_linea = {}  # Nueva variable para contar clientes únicos por línea
         
+        # Diccionarios para rastrear por canal (DIGITAL/NACIONAL)
+        clientes_por_linea_y_canal = {}  # {linea: {'DIGITAL': set(), 'NACIONAL': set()}}
+        ventas_por_linea_y_canal = {}  # {linea: {'DIGITAL': 0, 'NACIONAL': 0}}
+        
         ventas_sin_linea = 0
         ventas_sin_canal = 0
         ventas_categoria_excluida = 0
@@ -722,6 +727,33 @@ def dashboard():
                         if nombre_linea_actual not in clientes_por_linea:
                             clientes_por_linea[nombre_linea_actual] = set()
                         clientes_por_linea[nombre_linea_actual].add(partner_name)
+                        
+                        # Clasificar por canal usando sales_channel_id (Odoo) o canal (Supabase)
+                        canal_venta = 'NACIONAL'  # Default
+                        
+                        # Intentar primero con campo 'canal' de Supabase
+                        canal_directo = sale.get('canal')
+                        if canal_directo:
+                            canal_str = str(canal_directo).upper()
+                            if 'DIGITAL' in canal_str or 'E-COMMERCE' in canal_str or 'ECOMMERCE' in canal_str:
+                                canal_venta = 'DIGITAL'
+                        else:
+                            # Si no existe 'canal', usar sales_channel_id de Odoo
+                            sales_channel = sale.get('sales_channel_id')
+                            if sales_channel and isinstance(sales_channel, list) and len(sales_channel) > 1:
+                                channel_name = sales_channel[1].upper()
+                                if 'DIGITAL' in channel_name or 'E-COMMERCE' in channel_name or 'ECOMMERCE' in channel_name:
+                                    canal_venta = 'DIGITAL'
+                        
+                        # Inicializar estructuras si no existen
+                        if nombre_linea_actual not in clientes_por_linea_y_canal:
+                            clientes_por_linea_y_canal[nombre_linea_actual] = {'DIGITAL': set(), 'NACIONAL': set()}
+                        if nombre_linea_actual not in ventas_por_linea_y_canal:
+                            ventas_por_linea_y_canal[nombre_linea_actual] = {'DIGITAL': 0, 'NACIONAL': 0}
+                        
+                        # Agregar cliente y venta al canal correspondiente
+                        clientes_por_linea_y_canal[nombre_linea_actual][canal_venta].add(partner_name)
+                        ventas_por_linea_y_canal[nombre_linea_actual][canal_venta] += balance_float
                 
                 # LÓGICA FINAL: Sumar si la RUTA (route_id) coincide con los valores especificados
                 ruta = sale.get('route_id')
@@ -755,6 +787,59 @@ def dashboard():
             print(f"💊 IPN calculado: S/ {total_ipn:,.2f} distribuido en {len([v for v in ventas_ipn_por_linea.values() if v > 0])} líneas")
         else:
             print(f"⚠️ No se encontraron productos con ciclo_vida='nuevo' en las {len(sales)} ventas procesadas")
+        
+        # --- Preparar datos para tabla de clientes por línea comercial CON FILTRO POR CANAL ---
+        print(f"🔍 Preparando tabla de clientes por línea con filtro por canal...")
+        datos_clientes_por_linea = []
+        
+        # Obtener todas las líneas únicas de ventas_por_linea
+        for nombre_linea in sorted(ventas_por_linea.keys()):
+            venta_total = ventas_por_linea.get(nombre_linea, 0)
+            
+            # Obtener clientes únicos totales
+            clientes_unicos = clientes_por_linea.get(nombre_linea, set())
+            num_clientes_total = len(clientes_unicos)
+            ticket_promedio_total = (venta_total / num_clientes_total) if num_clientes_total > 0 else 0
+            
+            # Obtener datos por canal
+            clientes_digital = clientes_por_linea_y_canal.get(nombre_linea, {}).get('DIGITAL', set())
+            clientes_nacional = clientes_por_linea_y_canal.get(nombre_linea, {}).get('NACIONAL', set())
+            venta_digital = ventas_por_linea_y_canal.get(nombre_linea, {}).get('DIGITAL', 0)
+            venta_nacional = ventas_por_linea_y_canal.get(nombre_linea, {}).get('NACIONAL', 0)
+            
+            num_clientes_digital = len(clientes_digital)
+            num_clientes_nacional = len(clientes_nacional)
+            ticket_promedio_digital = (venta_digital / num_clientes_digital) if num_clientes_digital > 0 else 0
+            ticket_promedio_nacional = (venta_nacional / num_clientes_nacional) if num_clientes_nacional > 0 else 0
+            
+            # Agregar fila TODOS (total)
+            datos_clientes_por_linea.append({
+                'nombre': nombre_linea,
+                'venta': venta_total,
+                'num_clientes': num_clientes_total,
+                'ticket_promedio': ticket_promedio_total,
+                'canal': 'TODOS'
+            })
+            
+            # Agregar fila DIGITAL
+            datos_clientes_por_linea.append({
+                'nombre': nombre_linea,
+                'venta': venta_digital,
+                'num_clientes': num_clientes_digital,
+                'ticket_promedio': ticket_promedio_digital,
+                'canal': 'DIGITAL'
+            })
+            
+            # Agregar fila NACIONAL
+            datos_clientes_por_linea.append({
+                'nombre': nombre_linea,
+                'venta': venta_nacional,
+                'num_clientes': num_clientes_nacional,
+                'ticket_promedio': ticket_promedio_nacional,
+                'canal': 'NACIONAL'
+            })
+        
+        print(f"✅ Tabla de clientes por línea: {len(datos_clientes_por_linea)} filas (TODOS + DIGITAL + NACIONAL)")
 
         # --- Calcular cobertura de clientes ---
         # Primero, obtener el canal de cada cliente desde res.partner
@@ -1974,6 +2059,11 @@ def dashboard():
         if ventas_sin_canal > 0:
             print(f"ℹ️ Se encontraron {ventas_sin_canal} líneas de venta sin canal (pero se procesaron)")
         print(f"💰 Total venta calculado: {total_venta:,.2f}")
+        
+        print(f"📊 DEBUG: lineas_comerciales_filtradas tiene {len(lineas_comerciales_filtradas)} líneas")
+        print(f"📊 DEBUG: ventas_por_linea tiene {len(ventas_por_linea)} líneas")
+        if len(ventas_por_linea) > 0:
+            print(f"📊 DEBUG: Primeras 3 líneas en ventas_por_linea: {list(ventas_por_linea.keys())[:3]}")
 
         for linea in lineas_comerciales_filtradas:
             meta = metas_del_mes.get(linea['id'], 0)
@@ -1990,43 +2080,58 @@ def dashboard():
             porcentaje_total = (venta / meta * 100) if meta > 0 else 0
             porcentaje_pn = (venta_pn / meta_pn * 100) if meta_pn > 0 else 0
             porcentaje_sobre_total = (venta / total_venta_calculado * 100) if total_venta_calculado > 0 else 0
+            
+            # Obtener ventas por canal
+            venta_digital = ventas_por_linea_y_canal.get(nombre_linea, {}).get('DIGITAL', 0)
+            venta_nacional = ventas_por_linea_y_canal.get(nombre_linea, {}).get('NACIONAL', 0)
+            porcentaje_digital = (venta_digital / total_venta_calculado * 100) if total_venta_calculado > 0 else 0
+            porcentaje_nacional = (venta_nacional / total_venta_calculado * 100) if total_venta_calculado > 0 else 0
 
+            # Fila TODOS (total)
             datos_lineas.append({
                 'nombre': linea['nombre'],
                 'meta': meta,
-                'venta': venta, # Ahora es positivo
+                'venta': venta,
                 'porcentaje_total': porcentaje_total,
                 'porcentaje_sobre_total': porcentaje_sobre_total,
                 'meta_pn': meta_pn,
                 'venta_pn': venta_pn,
                 'porcentaje_pn': porcentaje_pn,
-                'vencimiento_6_meses': vencimiento
+                'vencimiento_6_meses': vencimiento,
+                'canal': 'TODOS'
+            })
+            
+            # Fila DIGITAL
+            datos_lineas.append({
+                'nombre': linea['nombre'],
+                'meta': 0,  # No hay meta por canal
+                'venta': venta_digital,
+                'porcentaje_total': 0,
+                'porcentaje_sobre_total': porcentaje_digital,
+                'meta_pn': 0,
+                'venta_pn': 0,
+                'porcentaje_pn': 0,
+                'vencimiento_6_meses': 0,
+                'canal': 'DIGITAL'
+            })
+            
+            # Fila NACIONAL
+            datos_lineas.append({
+                'nombre': linea['nombre'],
+                'meta': 0,  # No hay meta por canal
+                'venta': venta_nacional,
+                'porcentaje_total': 0,
+                'porcentaje_sobre_total': porcentaje_nacional,
+                'meta_pn': 0,
+                'venta_pn': 0,
+                'porcentaje_pn': 0,
+                'vencimiento_6_meses': 0,
+                'canal': 'NACIONAL'
             })
             
             # Los totales de metas ya se calcularon. Aquí solo sumamos los totales de ventas.
             total_venta_pn += venta_pn
             total_vencimiento += vencimiento
-        
-        # --- Preparar datos para tabla de clientes por línea comercial ---
-        datos_clientes_por_linea = []
-        for linea in lineas_comerciales_filtradas:
-            nombre_linea = linea['nombre'].upper()
-            venta = ventas_por_linea.get(nombre_linea, 0)
-            
-            # Obtener el número de clientes únicos
-            clientes_unicos = clientes_por_linea.get(nombre_linea, set())
-            num_clientes = len(clientes_unicos)
-            
-            # Calcular ticket promedio
-            ticket_promedio = (venta / num_clientes) if num_clientes > 0 else 0
-            
-            datos_clientes_por_linea.append({
-                'nombre': linea['nombre'],
-                'venta': venta,
-                'num_clientes': num_clientes,
-                'ticket_promedio': ticket_promedio
-            })
-        
         # --- 2. Calcular KPIs ---
         # Días laborables restantes (Lunes a Sábado)
         dias_restantes = 0
@@ -2169,8 +2274,32 @@ def dashboard():
 
         # --- FIN: LÓGICA PARA LA TABLA DEL EQUIPO ECOMMERCE ---
 
-        # Ordenar los datos de la tabla por venta descendente
-        datos_lineas_tabla_sorted = sorted(datos_lineas, key=lambda x: x['venta'], reverse=True)
+        # Ordenar los datos de la tabla: primero las filas TODOS, luego DIGITAL, luego NACIONAL
+        # Ordenar por venta descendente dentro de cada grupo
+        datos_todos = [d for d in datos_lineas if d.get('canal') == 'TODOS']
+        datos_digital = [d for d in datos_lineas if d.get('canal') == 'DIGITAL']
+        datos_nacional = [d for d in datos_lineas if d.get('canal') == 'NACIONAL']
+        
+        datos_todos_sorted = sorted(datos_todos, key=lambda x: x['venta'], reverse=True)
+        datos_digital_sorted = sorted(datos_digital, key=lambda x: x['venta'], reverse=True)
+        datos_nacional_sorted = sorted(datos_nacional, key=lambda x: x['venta'], reverse=True)
+        
+        # Intercalar: para cada línea TODOS, agregar su DIGITAL y NACIONAL correspondiente
+        datos_lineas_tabla_sorted = []
+        for linea_todos in datos_todos_sorted:
+            nombre_linea = linea_todos['nombre']
+            # Agregar la fila TODOS
+            datos_lineas_tabla_sorted.append(linea_todos)
+            # Buscar y agregar la fila DIGITAL correspondiente
+            for linea_digital in datos_digital_sorted:
+                if linea_digital['nombre'] == nombre_linea:
+                    datos_lineas_tabla_sorted.append(linea_digital)
+                    break
+            # Buscar y agregar la fila NACIONAL correspondiente
+            for linea_nacional in datos_nacional_sorted:
+                if linea_nacional['nombre'] == nombre_linea:
+                    datos_lineas_tabla_sorted.append(linea_nacional)
+                    break
 
         # Preparar los datos para renderizar
         render_data = {
