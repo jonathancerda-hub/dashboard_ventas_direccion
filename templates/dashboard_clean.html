@@ -27,7 +27,18 @@
     </a>
 
     <div class="header-nav">
-        <select id="año-selector" onchange="cambiarAño(this.value)" style="margin-right: 10px;">
+        <select id="año-selector" onchange="cambiarAño(this.value)" 
+                style="padding: 8px 16px;
+                       border: 2px solid rgba(255, 255, 255, 0.3);
+                       border-radius: 6px;
+                       font-size: 14px;
+                       font-weight: 600;
+                       background-color: rgba(255, 255, 255, 0.1);
+                       color: white;
+                       font-family: 'Poppins', sans-serif;
+                       cursor: pointer;
+                       margin-right: 10px;
+                       transition: all 0.2s ease;">
             {% for año in años_disponibles %}
             <option value="{{ año }}" {% if año==año_seleccionado %}selected{% endif %}>
                 {{ año }}
@@ -456,8 +467,41 @@
 
             <!-- Gráfico de Frecuencia de Compra -->
             <div class="grafico-container" style="margin-top: 30px;">
-                <div class="tabla-header">
+                <div class="tabla-header" style="display: flex; justify-content: space-between; align-items: center;">
                     <h3>🔄 Frecuencia de Compra</h3>
+                    
+                    <!-- Filtro de Canal -->
+                    <div style="position: relative;">
+                        <label style="font-size: 12px; color: #666; font-weight: 500; display: block; margin-bottom: 5px;">Canal:</label>
+                        <select id="filtroCanalFrecuencia" 
+                                onchange="filtrarFrecuenciaLinea()"
+                                style="
+                                    width: 200px;
+                                    padding: 8px 30px 8px 12px;
+                                    border: 2px solid #875A7B;
+                                    border-radius: 6px;
+                                    font-size: 13px;
+                                    font-weight: 500;
+                                    color: #2c3e50;
+                                    background-color: white;
+                                    cursor: pointer;
+                                    transition: all 0.2s ease;
+                                    appearance: none;
+                                    -webkit-appearance: none;
+                                    -moz-appearance: none;
+                                "
+                                onmouseover="this.style.borderColor='#6B4563'; this.style.boxShadow='0 2px 8px rgba(135, 90, 123, 0.15)'"
+                                onmouseout="this.style.borderColor='#875A7B'; this.style.boxShadow='none'"
+                                onfocus="this.style.borderColor='#6B4563'; this.style.outline='none'"
+                                onblur="this.style.borderColor='#875A7B'">
+                            <option value="TODOS" selected>📊 Todos los Canales</option>
+                            <option value="DIGITAL">💻 Digital</option>
+                            <option value="NACIONAL">🏢 Nacional</option>
+                        </select>
+                        <svg style="position: absolute; right: 12px; bottom: 12px; pointer-events: none; width: 12px; height: 12px;" viewBox="0 0 12 12" fill="none">
+                            <path d="M2 4L6 8L10 4" stroke="#875A7B" stroke-width="2" stroke-linecap="round"/>
+                        </svg>
+                    </div>
                 </div>
 
                 <!-- Grid de 2 columnas -->
@@ -503,10 +547,13 @@
                                         <th style="width: 25%;">Frecuencia</th>
                                     </tr>
                                 </thead>
-                                <tbody>
+                                <tbody id="tablaDetalleFrecuencia">
                                     {% for linea in datos_frecuencia_linea|default([]) %}
-                                    <tr {% if linea.get('es_total')
-                                        %}style="background: #f0f2f5; font-weight: 700; border-top: 2px solid #875A7B;"
+                                    <tr data-canal="{{ linea.get('canal', 'TODOS') }}" 
+                                        {% if linea.get('es_total') %}
+                                        style="background: #f0f2f5; font-weight: 700; border-top: 2px solid #875A7B;"
+                                        {% elif linea.get('canal') != 'TODOS' %}
+                                        style="display: none;"
                                         {% endif %}>
                                         <td><strong>{{ linea.linea }}</strong></td>
                                         <td style="text-align: center;">{{ linea.clientes_activos }}</td>
@@ -706,9 +753,8 @@
                     </div>
 
                     <!-- Grid de 2 columnas -->
-                    <div
-                        style="display: grid; grid-template-columns: 1fr 1.5fr; gap: 25px; margin-top: 20px; overflow: hidden;">
-                        <!-- Columna 1: Distribución de segmentos -->
+                    <div style="display: grid; grid-template-columns: 1fr 1.5fr; gap: 25px; margin-top: 20px; overflow: hidden;">
+                        <!-- Columna 1: Gráfico y cuadros informativos -->
                         <div class="grafico-container" style="margin: 0; overflow: hidden;">
                             <div class="tabla-header" style="margin-bottom: 15px;">
                                 <h4 id="tituloGraficoSegmentos" style="margin: 0; font-size: 16px;">Distribución por Segmento</h4>
@@ -741,66 +787,7 @@
                                         sin comprar</div>
                                 </div>
                             </div>
-                            {% endif %}
-                        </div>
-
-                        <!-- Columna 2: Top clientes -->
-                        <div class="grafico-container" style="margin: 0; overflow: hidden;">
-                            <div class="tabla-header" style="margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center;">
-                                <h4 style="margin: 0; font-size: 16px;">
-                                    Top 20 Clientes por Valor 
-                                    <span id="canalActualRFM" style="color: #875A7B; font-weight: 600;">(Todos)</span>
-                                </h4>
-                                <span id="totalClientesFiltrados" style="font-size: 13px; color: #666; font-weight: 500;">
-                                    <!-- Se actualiza dinámicamente -->
-                                </span>
-                            </div>
-                            <div style="overflow-y: auto; overflow-x: hidden; max-height: 500px;">
-                                <table class="tabla-avance" style="font-size: 12px; table-layout: fixed; width: 100%;">
-                                    <thead>
-                                        <tr>
-                                            <th style="width: 5%;">#</th>
-                                            <th style="width: 30%;">Cliente</th>
-                                            <th style="width: 12%;">Canal</th>
-                                            <th style="width: 15%;">Segmento</th>
-                                            <th style="width: 10%;" title="Días desde última compra">Recencia</th>
-                                            <th style="width: 10%;" title="Número de pedidos">Frecuencia</th>
-                                            <th style="width: 18%;">Valor</th>
-                                        </tr>
-                                    </thead>
-                                    <tbody id="tablaClientesRFM">
-                                        {% for cliente in clientes_rfm[:20] %}
-                                        <tr>
-                                            <td style="text-align: center;">{{ loop.index }}</td>
-                                            <td style="font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
-                                                title="{{ cliente.cliente }}">{{ cliente.cliente }}</td>
-                                            <td style="text-align: center; font-size: 11px;">
-                                                <span style="padding: 3px 6px; border-radius: 4px; background: #f0f0f0; font-weight: 500;">
-                                                    {{ cliente.grupo|default('N/A') }}
-                                                </span>
-                                            </td>
-                                            <td style="text-align: center;">
-                                                <span style="
-                                        padding: 4px 8px;
-                                        border-radius: 12px;
-                                        font-size: 11px;
-                                        font-weight: 600;
-                                        background: {{ cliente.color }}22;
-                                        color: {{ cliente.color }};
-                                    ">
-                                                    {{ cliente.categoria }}
-                                                </span>
-                                            </td>
-                                            <td style="text-align: center;">{{ cliente.recency }} días</td>
-                                            <td style="text-align: center;">{{ cliente.frequency }}</td>
-                                            <td style="text-align: right; font-weight: 600;">S/ {{
-                                                "{:,.0f}".format(cliente.monetary) }}</td>
-                                        </tr>
-                                        {% endfor %}
-                                    </tbody>
-                                </table>
-                            </div>
-
+                            
                             <!-- Insight -->
                             <div
                                 style="margin-top: 15px; padding: 12px; background: #e6f7ff; border-left: 4px solid #1890ff; border-radius: 4px; font-size: 12px;">
@@ -836,14 +823,105 @@
                                     <li><strong>Potenciales:</strong> Cross-selling y up-selling</li>
                                 </ul>
                             </div>
+                            {% endif %}
+                        </div>
+
+                        <!-- Columna 2: Tabla Top 20 clientes -->
+                        <div class="grafico-container" style="margin: 0; overflow: hidden;">
+                        <div class="tabla-header" style="margin-bottom: 15px; display: flex; justify-content: space-between; align-items: center;">
+                            <h4 style="margin: 0; font-size: 16px;">
+                                Top 20 Clientes por Valor 
+                                <span id="canalActualRFM" style="color: #875A7B; font-weight: 600;">(Todos)</span>
+                            </h4>
+                            <span id="totalClientesFiltrados" style="font-size: 13px; color: #666; font-weight: 500;">
+                                <!-- Se actualiza dinámicamente -->
+                            </span>
+                        </div>
+                        <div style="overflow-y: auto; overflow-x: hidden; max-height: 1000px;">
+                            <table class="tabla-avance" style="font-size: 12px; table-layout: fixed; width: 100%;">
+                                <thead>
+                                    <tr>
+                                        <th style="width: 5%;">#</th>
+                                        <th style="width: 30%;">Cliente</th>
+                                        <th style="width: 12%;">Canal</th>
+                                        <th style="width: 15%;">Segmento</th>
+                                        <th style="width: 10%;" title="Días desde última compra">Recencia</th>
+                                        <th style="width: 10%;" title="Número de pedidos">Frecuencia</th>
+                                        <th style="width: 18%;">Valor</th>
+                                    </tr>
+                                </thead>
+                                <tbody id="tablaClientesRFM">
+                                    {% for cliente in clientes_rfm[:20] %}
+                                    <tr>
+                                        <td style="text-align: center;">{{ loop.index }}</td>
+                                        <td style="font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
+                                            title="{{ cliente.cliente }}">{{ cliente.cliente }}</td>
+                                        <td style="text-align: center; font-size: 11px;">
+                                            <span style="padding: 3px 6px; border-radius: 4px; background: #f0f0f0; font-weight: 500;">
+                                                {{ cliente.grupo|default('N/A') }}
+                                            </span>
+                                        </td>
+                                        <td style="text-align: center;">
+                                            <span style="
+                                    padding: 4px 8px;
+                                    border-radius: 12px;
+                                    font-size: 11px;
+                                    font-weight: 600;
+                                    background: {{ cliente.color }}22;
+                                    color: {{ cliente.color }};
+                                ">
+                                                {{ cliente.categoria }}
+                                            </span>
+                                        </td>
+                                        <td style="text-align: center;">{{ cliente.recency }} días</td>
+                                        <td style="text-align: center;">{{ cliente.frequency }}</td>
+                                        <td style="text-align: right; font-weight: 600;">S/ {{
+                                            "{:,.0f}".format(cliente.monetary) }}</td>
+                                    </tr>
+                                    {% endfor %}
+                                </tbody>
+                            </table>
                         </div>
                     </div>
                 </div>
 
                 <!-- Clientes en Riesgo -->
                 <div class="grafico-container" style="margin-top: 30px; overflow: hidden;">
-                    <div class="tabla-header">
+                    <div class="tabla-header" style="display: flex; justify-content: space-between; align-items: center;">
                         <h3>⚠️ Clientes de Alto Valor en Riesgo</h3>
+                        
+                        <!-- Filtro de Canal -->
+                        <div style="position: relative;">
+                            <label style="font-size: 12px; color: #666; font-weight: 500; display: block; margin-bottom: 5px;">Canal:</label>
+                            <select id="filtroCanalRiesgo" 
+                                    onchange="filtrarClientesRiesgo()"
+                                    style="
+                                        width: 200px;
+                                        padding: 8px 30px 8px 12px;
+                                        border: 2px solid #875A7B;
+                                        border-radius: 6px;
+                                        font-size: 13px;
+                                        font-weight: 500;
+                                        color: #2c3e50;
+                                        background-color: white;
+                                        cursor: pointer;
+                                        transition: all 0.2s ease;
+                                        appearance: none;
+                                        -webkit-appearance: none;
+                                        -moz-appearance: none;
+                                    "
+                                    onmouseover="this.style.borderColor='#6B4563'; this.style.boxShadow='0 2px 8px rgba(135, 90, 123, 0.15)'"
+                                    onmouseout="this.style.borderColor='#875A7B'; this.style.boxShadow='none'"
+                                    onfocus="this.style.borderColor='#6B4563'; this.style.outline='none'"
+                                    onblur="this.style.borderColor='#875A7B'">
+                                <option value="TODOS" selected>📊 Todos los Canales</option>
+                                <option value="DIGITAL">💻 Digital</option>
+                                <option value="NACIONAL">🏢 Nacional</option>
+                            </select>
+                            <svg style="position: absolute; right: 12px; bottom: 12px; pointer-events: none; width: 12px; height: 12px;" viewBox="0 0 12 12" fill="none">
+                                <path d="M2 4L6 8L10 4" stroke="#875A7B" stroke-width="2" stroke-linecap="round"/>
+                            </svg>
+                        </div>
                     </div>
 
                     <div style="margin-top: 20px; overflow: hidden;">
@@ -863,9 +941,9 @@
                                         <th style="width: 10%;">Segmento</th>
                                     </tr>
                                 </thead>
-                                <tbody>
+                                <tbody id="tablaClientesRiesgo">
                                     {% for cliente in clientes_riesgo %}
-                                    <tr>
+                                    <tr data-canal="{{ cliente.canal }}">
                                         <td style="text-align: center;">{{ loop.index }}</td>
                                         <td style="font-weight: 500; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;"
                                             title="{{ cliente.cliente }}">{{ cliente.cliente }}</td>
@@ -1391,19 +1469,31 @@
                     align-items: center;
                 }
 
+                #año-selector,
                 #mes-selector {
-                    padding: 8px 12px;
-                    border: 1px solid rgba(255, 255, 255, 0.3);
+                    padding: 8px 16px;
+                    border: 2px solid rgba(255, 255, 255, 0.3);
                     border-radius: 6px;
                     font-size: 14px;
+                    font-weight: 600;
                     background-color: rgba(255, 255, 255, 0.1);
                     color: white;
                     font-family: 'Poppins', sans-serif;
+                    cursor: pointer;
+                    transition: all 0.2s ease;
                 }
 
+                #año-selector:hover,
+                #mes-selector:hover {
+                    background-color: rgba(255, 255, 255, 0.2);
+                    border-color: rgba(255, 255, 255, 0.5);
+                }
+
+                #año-selector option,
                 #mes-selector option {
                     background-color: #333;
                     color: white;
+                    font-weight: 500;
                 }
 
                 .btn-nav,
@@ -1895,11 +1985,18 @@
 
                 // 2. Funciones de Gráficos (ECharts & Chart.js)
 
-                function crearGraficoFrecuenciaLinea() {
+                function crearGraficoFrecuenciaLinea(canalFiltro = 'TODOS') {
                     const chartDom = document.getElementById('graficoFrecuenciaLinea');
                     if (!chartDom || !globalData.frecuencia || globalData.frecuencia.length <= 1) return;
+                    
+                    // Filtrar por canal
+                    const filtered = globalData.frecuencia
+                        .filter(d => !d.es_total && d.canal === canalFiltro)
+                        .sort((a, b) => b.frecuencia - a.frecuencia);
+                    
+                    console.log(`📊 Gráfico Frecuencia - Canal: ${canalFiltro}, Filas: ${filtered.length}`);
+                    
                     const myChart = echarts.init(chartDom);
-                    const filtered = globalData.frecuencia.filter(d => !d.es_total).sort((a, b) => b.frecuencia - a.frecuencia);
                     myChart.setOption({
                         tooltip: { trigger: 'axis', axisPointer: { type: 'shadow' } },
                         grid: { left: '3%', right: '4%', bottom: '3%', containLabel: true },
@@ -1914,6 +2011,70 @@
                             label: { show: true, position: 'top', formatter: (p) => p.value.toFixed(2) }
                         }]
                     });
+                }
+                
+                // Función para filtrar el gráfico de frecuencia por canal
+                function filtrarFrecuenciaLinea() {
+                    const canal = document.getElementById('filtroCanalFrecuencia').value;
+                    console.log(`🔍 Filtrando frecuencia - Canal: ${canal}`);
+                    
+                    // Actualizar gráfico
+                    crearGraficoFrecuenciaLinea(canal);
+                    
+                    // Actualizar tabla
+                    const tbody = document.getElementById('tablaDetalleFrecuencia');
+                    if (!tbody) {
+                        console.warn('⚠️ No se encontró tabla de detalle de frecuencia');
+                        return;
+                    }
+                    
+                    const filas = tbody.querySelectorAll('tr[data-canal]');
+                    filas.forEach(fila => {
+                        const canalData = fila.getAttribute('data-canal');
+                        
+                        // Mostrar según el filtro seleccionado
+                        if (canal === 'TODOS' && canalData === 'TODOS') {
+                            fila.style.display = '';
+                        } else if (canal === 'DIGITAL' && canalData === 'DIGITAL') {
+                            fila.style.display = '';
+                        } else if (canal === 'NACIONAL' && canalData === 'NACIONAL') {
+                            fila.style.display = '';
+                        } else {
+                            fila.style.display = 'none';
+                        }
+                    });
+                    
+                    console.log(`✅ Tabla actualizada para canal "${canal}"`);
+                }
+                
+                // Función para filtrar tabla de clientes en riesgo por canal
+                function filtrarClientesRiesgo() {
+                    const canal = document.getElementById('filtroCanalRiesgo').value;
+                    const tbody = document.getElementById('tablaClientesRiesgo');
+                    
+                    if (!tbody) {
+                        console.warn('⚠️ No se encontró tabla de clientes en riesgo');
+                        return;
+                    }
+                    
+                    console.log(`🔍 Filtrando clientes en riesgo - Canal: ${canal}`);
+                    
+                    const filas = tbody.querySelectorAll('tr[data-canal]');
+                    let filasVisibles = 0;
+                    
+                    filas.forEach(fila => {
+                        const canalData = fila.getAttribute('data-canal');
+                        
+                        // Mostrar según el filtro seleccionado
+                        if (canal === 'TODOS' || canalData === canal) {
+                            fila.style.display = '';
+                            filasVisibles++;
+                        } else {
+                            fila.style.display = 'none';
+                        }
+                    });
+                    
+                    console.log(`✅ Mostrando ${filasVisibles} clientes en riesgo para canal "${canal}"`);
                 }
 
                 function crearGraficoTendencia12Meses() {

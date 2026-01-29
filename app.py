@@ -928,6 +928,7 @@ def dashboard():
         
         # Diccionarios para almacenar pedidos únicos por línea (usando clientes_por_linea ya existente)
         pedidos_unicos_por_linea = {}  # {linea: set(move_ids)}
+        pedidos_por_linea_y_canal = {}  # {linea: {'DIGITAL': set(), 'NACIONAL': set()}}
         
         for sale in sales_data:
             # Obtener línea comercial (misma lógica que ventas_por_linea)
@@ -960,6 +961,30 @@ def dashboard():
                 if isinstance(move_id, list):
                     move_id = move_id[0]
                 pedidos_unicos_por_linea[nombre_linea_actual].add(move_id)
+                
+                # Clasificar por canal usando sales_channel_id (Odoo) o canal (Supabase)
+                canal_venta = 'NACIONAL'  # Default
+                
+                # Intentar primero con campo 'canal' de Supabase
+                canal_directo = sale.get('canal')
+                if canal_directo:
+                    canal_str = str(canal_directo).upper()
+                    if 'DIGITAL' in canal_str or 'E-COMMERCE' in canal_str or 'ECOMMERCE' in canal_str:
+                        canal_venta = 'DIGITAL'
+                else:
+                    # Si no existe 'canal', usar sales_channel_id de Odoo
+                    sales_channel = sale.get('sales_channel_id')
+                    if sales_channel and isinstance(sales_channel, list) and len(sales_channel) > 1:
+                        channel_name = sales_channel[1].upper()
+                        if 'DIGITAL' in channel_name or 'E-COMMERCE' in channel_name or 'ECOMMERCE' in channel_name:
+                            canal_venta = 'DIGITAL'
+                
+                # Inicializar estructuras si no existen
+                if nombre_linea_actual not in pedidos_por_linea_y_canal:
+                    pedidos_por_linea_y_canal[nombre_linea_actual] = {'DIGITAL': set(), 'NACIONAL': set()}
+                
+                # Agregar pedido al canal correspondiente
+                pedidos_por_linea_y_canal[nombre_linea_actual][canal_venta].add(move_id)
         
         # Calcular frecuencia por línea comercial usando clientes_por_linea ya existente
         datos_frecuencia_linea = []
@@ -968,32 +993,68 @@ def dashboard():
         
         # Usar las mismas líneas que ya están en clientes_por_linea
         for linea in sorted(clientes_por_linea.keys()):
-            num_clientes = len(clientes_por_linea[linea])
-            num_pedidos = len(pedidos_unicos_por_linea.get(linea, set()))
-            frecuencia = (num_pedidos / num_clientes) if num_clientes > 0 else 0
+            # TODOS (total)
+            num_clientes_total = len(clientes_por_linea[linea])
+            num_pedidos_total = len(pedidos_unicos_por_linea.get(linea, set()))
+            frecuencia_total = (num_pedidos_total / num_clientes_total) if num_clientes_total > 0 else 0
             
+            # DIGITAL
+            clientes_digital = clientes_por_linea_y_canal.get(linea, {}).get('DIGITAL', set())
+            pedidos_digital = pedidos_por_linea_y_canal.get(linea, {}).get('DIGITAL', set())
+            num_clientes_digital = len(clientes_digital)
+            num_pedidos_digital = len(pedidos_digital)
+            frecuencia_digital = (num_pedidos_digital / num_clientes_digital) if num_clientes_digital > 0 else 0
+            
+            # NACIONAL
+            clientes_nacional = clientes_por_linea_y_canal.get(linea, {}).get('NACIONAL', set())
+            pedidos_nacional = pedidos_por_linea_y_canal.get(linea, {}).get('NACIONAL', set())
+            num_clientes_nacional = len(clientes_nacional)
+            num_pedidos_nacional = len(pedidos_nacional)
+            frecuencia_nacional = (num_pedidos_nacional / num_clientes_nacional) if num_clientes_nacional > 0 else 0
+            
+            # Fila TODOS
             datos_frecuencia_linea.append({
                 'linea': linea,
-                'clientes_activos': num_clientes,
-                'pedidos': num_pedidos,
-                'frecuencia': frecuencia
+                'clientes_activos': num_clientes_total,
+                'pedidos': num_pedidos_total,
+                'frecuencia': frecuencia_total,
+                'canal': 'TODOS'
             })
             
-            total_pedidos_general += num_pedidos
-            total_clientes_general += num_clientes
+            # Fila DIGITAL
+            datos_frecuencia_linea.append({
+                'linea': linea,
+                'clientes_activos': num_clientes_digital,
+                'pedidos': num_pedidos_digital,
+                'frecuencia': frecuencia_digital,
+                'canal': 'DIGITAL'
+            })
+            
+            # Fila NACIONAL
+            datos_frecuencia_linea.append({
+                'linea': linea,
+                'clientes_activos': num_clientes_nacional,
+                'pedidos': num_pedidos_nacional,
+                'frecuencia': frecuencia_nacional,
+                'canal': 'NACIONAL'
+            })
+            
+            total_pedidos_general += num_pedidos_total
+            total_clientes_general += num_clientes_total
         
-        # Agregar fila de totales
-        frecuencia_total = (total_pedidos_general / total_clientes_general) if total_clientes_general > 0 else 0
+        # Agregar fila de totales (solo TODOS)
+        frecuencia_general = (total_pedidos_general / total_clientes_general) if total_clientes_general > 0 else 0
         datos_frecuencia_linea.append({
             'linea': 'TOTAL GENERAL',
             'clientes_activos': total_clientes_general,
             'pedidos': total_pedidos_general,
-            'frecuencia': frecuencia_total,
-            'es_total': True
+            'frecuencia': frecuencia_general,
+            'es_total': True,
+            'canal': 'TODOS'
         })
         
-        print(f"📊 Frecuencia de compra: {len(datos_frecuencia_linea)-1} líneas comerciales procesadas")
-        print(f"📊 Frecuencia general: {frecuencia_total:.2f} pedidos/cliente")
+        print(f"📊 Frecuencia de compra: {len([d for d in datos_frecuencia_linea if d.get('canal') == 'TODOS' and not d.get('es_total')])} líneas comerciales procesadas")
+        print(f"📊 Frecuencia general: {frecuencia_general:.2f} pedidos/cliente")
 
         # --- ANÁLISIS RFM (Recency, Frequency, Monetary) CON SEGMENTACIÓN POR CANAL ---
         print(f"📈 Calculando análisis RFM de clientes con filtro por canal...")
@@ -1863,7 +1924,8 @@ def dashboard():
                     'valor_historico': cliente['monetary'],
                     'nivel_riesgo': nivel_riesgo,
                     'color': color_riesgo,
-                    'categoria_rfm': cliente['categoria']
+                    'categoria_rfm': cliente['categoria'],
+                    'canal': cliente.get('canal', 'N/A')  # Agregar canal del cliente
                 })
         
         # Ordenar por valor histórico (priorizar clientes valiosos)
