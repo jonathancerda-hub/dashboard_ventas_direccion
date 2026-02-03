@@ -118,6 +118,56 @@
         <!-- Proyección lineal y faltante movidas a Avance Diario (ver más abajo) -->
     </div>
 
+    <!-- Tendencia Histórica de Ventas (12 meses) - MOVIDO AQUÍ PRIMERO -->
+    <div class="grafico-container" style="margin-top: 25px;">
+        <div class="tabla-header" style="display: flex; justify-content: space-between; align-items: center;">
+            <div>
+                <h3>📈 Tendencia Histórica de Ventas (12 Meses)</h3>
+                <span style="font-size:13px; color:#1890ff; font-weight:500; margin-left:10px;">(Siempre anual, no depende del filtro de mes)</span>
+            </div>
+            <div style="display: flex; gap: 20px; align-items: center;">
+                {% if año_seleccionado > 2025 %}
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <input type="checkbox" id="compararAñoAnterior" style="cursor: pointer; width: 18px; height: 18px;">
+                    <label for="compararAñoAnterior" style="cursor: pointer; font-size: 14px; font-weight: 500; color: #333; margin: 0;">
+                        Comparar con {{ año_seleccionado - 1 }}
+                    </label>
+                </div>
+                {% endif %}
+                {% if año_seleccionado < año_actual %}
+                <div style="display: flex; align-items: center; gap: 8px;">
+                    <input type="checkbox" id="compararAñoSiguiente" style="cursor: pointer; width: 18px; height: 18px;">
+                    <label for="compararAñoSiguiente" style="cursor: pointer; font-size: 14px; font-weight: 500; color: #333; margin: 0;">
+                        Comparar con {{ año_seleccionado + 1 }}
+                    </label>
+                </div>
+                {% endif %}
+            </div>
+        </div>
+
+        <div style="margin-top: 20px; position: relative;">
+            {% if tendencia_12_meses and tendencia_12_meses|length > 0 %}
+            <div style="position: relative; height: 420px; width: 100%; padding: 10px;">
+                <canvas id="graficoTendencia12Meses"></canvas>
+            </div>
+            {% else %}
+            <div
+                style="width: 100%; height: 400px; display: flex; align-items: center; justify-content: center; color: #999; background: #f8f9fa; border-radius: 8px;">
+                No hay datos históricos suficientes para mostrar la tendencia.
+            </div>
+            {% endif %}
+
+            <!-- Explicación del gráfico -->
+            <div
+                style="margin-top: 15px; padding: 10px 15px; background: #f8f9fa; border-left: 3px solid #875A7B; border-radius: 4px; font-size: 12px;">
+                <div class="color: #666; line-height: 1.7;">
+                    <strong id="totalVentaAnual" style="color: #333; font-size: 14px;">Calculando...</strong><br>
+                    <span style="color:#875A7B; font-weight:500;">Muestra siempre los últimos 12 meses.</span>
+                </div>
+            </div>
+        </div>
+    </div>
+
     <!-- FILA 1: TABLA PRINCIPAL COMENTADA - Los datos siguen cargándose en el backend -->
     <!-- 
     <div class="main-table-row">
@@ -610,45 +660,7 @@
                     </div>
                 </div>
 
-                <!-- Tendencia Histórica de Ventas (12 meses) -->
-                <div class="grafico-container" style="margin-top: 30px;">
-                    <div class="tabla-header" style="display: flex; justify-content: space-between; align-items: center;">
-                        <div>
-                            <h3>📈 Tendencia Histórica de Ventas (12 Meses)</h3>
-                            <span style="font-size:13px; color:#1890ff; font-weight:500; margin-left:10px;">(Siempre anual, no depende del filtro de mes)</span>
-                        </div>
-                        {% if año_seleccionado < año_actual %}
-                        <div style="display: flex; align-items: center; gap: 8px;">
-                            <input type="checkbox" id="compararAñoSiguiente" style="cursor: pointer; width: 18px; height: 18px;">
-                            <label for="compararAñoSiguiente" style="cursor: pointer; font-size: 14px; font-weight: 500; color: #333; margin: 0;">
-                                Comparar con {{ año_seleccionado + 1 }}
-                            </label>
-                        </div>
-                        {% endif %}
-                    </div>
-
-                    <div style="margin-top: 20px; position: relative;">
-                        {% if tendencia_12_meses and tendencia_12_meses|length > 0 %}
-                        <div style="position: relative; height: 420px; width: 100%; padding: 10px;">
-                            <canvas id="graficoTendencia12Meses"></canvas>
-                        </div>
-                        {% else %}
-                        <div
-                            style="width: 100%; height: 400px; display: flex; align-items: center; justify-content: center; color: #999; background: #f8f9fa; border-radius: 8px;">
-                            No hay datos históricos suficientes para mostrar la tendencia.
-                        </div>
-                        {% endif %}
-
-                        <!-- Explicación del gráfico -->
-                        <div
-                            style="margin-top: 15px; padding: 10px 15px; background: #f8f9fa; border-left: 3px solid #875A7B; border-radius: 4px; font-size: 12px;">
-                            <div class="color: #666; line-height: 1.7;">
-                                <strong id="totalVentaAnual" style="color: #333; font-size: 14px;">Calculando...</strong><br>
-                                <span style="color:#875A7B; font-weight:500;">Muestra siempre los últimos 12 meses.</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+                <!-- Gráfico de tendencia movido arriba después de los KPIs -->
 
                 <!-- Análisis RFM (Segmentación de Clientes) -->
                 <div class="grafico-container" style="margin-top: 30px; overflow: hidden;">
@@ -2220,9 +2232,12 @@
                     const elementoTotal = document.getElementById('totalVentaAnual');
                     if (elementoTotal) {
                         elementoTotal.textContent = `Total ${añoActual}: S/ ${totalVentaAnual.toLocaleString('es-PE', {minimumFractionDigits: 0, maximumFractionDigits: 0})}`;
+                        // Guardar el total original para comparaciones
+                        elementoTotal.setAttribute('data-total-original', totalVentaAnual);
+                        elementoTotal.setAttribute('data-año-original', añoActual);
                     }
 
-                    // Agregar evento al checkbox de comparación
+                    // Agregar evento al checkbox de comparación con año siguiente
                     const checkbox = document.getElementById('compararAñoSiguiente');
                     if (checkbox) {
                         checkbox.addEventListener('change', function() {
@@ -2232,6 +2247,130 @@
                                 quitarComparacionAñoSiguiente();
                             }
                         });
+                    }
+                    
+                    // Agregar evento al checkbox de comparación con año anterior
+                    const checkboxAnterior = document.getElementById('compararAñoAnterior');
+                    if (checkboxAnterior) {
+                        checkboxAnterior.addEventListener('change', function() {
+                            if (this.checked) {
+                                agregarComparacionAñoAnterior();
+                            } else {
+                                quitarComparacionAñoAnterior();
+                            }
+                        });
+                    }
+                }
+                
+                function agregarComparacionAñoAnterior() {
+                    const añoActual = {{ año_seleccionado }};
+                    const añoAnterior = añoActual - 1;
+                    
+                    // Mostrar loading
+                    const canvas = document.getElementById('graficoTendencia12Meses');
+                    if (canvas) {
+                        canvas.style.opacity = '0.5';
+                    }
+
+                    // Fetch de datos del año anterior
+                    fetch(`/api/tendencia?año=${añoAnterior}`)
+                        .then(response => {
+                            if (!response.ok) {
+                                throw new Error(`HTTP error! status: ${response.status}`);
+                            }
+                            return response.json();
+                        })
+                        .then(data => {
+                            if (data.success && data.tendencia && data.tendencia.length > 0) {
+                                // Calcular total del año anterior
+                                const totalAnterior = data.tendencia.reduce((sum, d) => sum + d.venta, 0);
+                                
+                                // Actualizar tarjeta con comparación
+                                const elementoTotal = document.getElementById('totalVentaAnual');
+                                if (elementoTotal) {
+                                    const totalActual = parseFloat(elementoTotal.getAttribute('data-total-original')) || 0;
+                                    const diferencia = totalActual - totalAnterior;
+                                    const porcentajeCambio = totalAnterior > 0 ? ((diferencia / totalAnterior) * 100) : 0;
+                                    const simbolo = diferencia >= 0 ? '↑' : '↓';
+                                    const colorCambio = diferencia >= 0 ? '#52c41a' : '#ff4d4f';
+                                    
+                                    elementoTotal.innerHTML = `
+                                        Total ${añoActual}: S/ ${totalActual.toLocaleString('es-PE', {minimumFractionDigits: 0, maximumFractionDigits: 0})}<br>
+                                        <span style="font-size: 12px; color: #666;">vs ${añoAnterior}: S/ ${totalAnterior.toLocaleString('es-PE', {minimumFractionDigits: 0, maximumFractionDigits: 0})}</span>
+                                        <span style="font-size: 13px; font-weight: 700; color: ${colorCambio}; margin-left: 8px;">
+                                            ${simbolo} ${Math.abs(porcentajeCambio).toFixed(1)}%
+                                        </span>
+                                    `;
+                                    elementoTotal.setAttribute('data-total-anterior', totalAnterior);
+                                }
+                                
+                                // Agregar dataset del año anterior
+                                const ventasAnterior = data.tendencia.map(d => d.venta);
+                                window.chartTendencia.data.datasets.push({
+                                    label: `Venta ${añoAnterior}`,
+                                    data: ventasAnterior,
+                                    borderColor: '#9b59b6',
+                                    backgroundColor: 'rgba(155, 89, 182, 0.1)',
+                                    fill: false,
+                                    tension: 0.4,
+                                    borderWidth: 2
+                                });
+                                
+                                // Configurar tooltip para mostrar todos los años correctamente
+                                window.chartTendencia.options.plugins.tooltip = {
+                                    callbacks: {
+                                        title: function(context) {
+                                            const index = context[0].dataIndex;
+                                            const mes = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 
+                                                        'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'][index];
+                                            return `${mes}`;
+                                        },
+                                        label: function(context) {
+                                            const datasetLabel = context.dataset.label || '';
+                                            const value = context.parsed.y;
+                                            const formattedValue = 'S/ ' + value.toLocaleString('es-PE', {minimumFractionDigits: 0, maximumFractionDigits: 0});
+                                            return `${datasetLabel}: ${formattedValue}`;
+                                        }
+                                    }
+                                };
+                                
+                                window.chartTendencia.update();
+                            } else {
+                                alert(`No hay datos disponibles para ${añoAnterior}`);
+                                document.getElementById('compararAñoAnterior').checked = false;
+                            }
+                        })
+                        .catch(error => {
+                            console.error('Error al cargar datos de comparación:', error);
+                            alert(`Error al cargar datos de ${añoAnterior}: ${error.message}`);
+                            document.getElementById('compararAñoAnterior').checked = false;
+                        })
+                        .finally(() => {
+                            if (canvas) {
+                                canvas.style.opacity = '1';
+                            }
+                        });
+                }
+                
+                function quitarComparacionAñoAnterior() {
+                    // Restaurar tarjeta a su estado original
+                    const elementoTotal = document.getElementById('totalVentaAnual');
+                    if (elementoTotal) {
+                        const añoOriginal = elementoTotal.getAttribute('data-año-original');
+                        const totalOriginal = parseFloat(elementoTotal.getAttribute('data-total-original')) || 0;
+                        elementoTotal.textContent = `Total ${añoOriginal}: S/ ${totalOriginal.toLocaleString('es-PE', {minimumFractionDigits: 0, maximumFractionDigits: 0})}`;
+                        elementoTotal.removeAttribute('data-total-anterior');
+                    }
+                    
+                    // Remover el dataset del año anterior
+                    if (window.chartTendencia && window.chartTendencia.data.datasets.length > 3) {
+                        // Buscar y eliminar el dataset del año anterior
+                        const añoAnterior = {{ año_seleccionado }} - 1;
+                        const index = window.chartTendencia.data.datasets.findIndex(ds => ds.label === `Venta ${añoAnterior}`);
+                        if (index > -1) {
+                            window.chartTendencia.data.datasets.splice(index, 1);
+                            window.chartTendencia.update();
+                        }
                     }
                 }
 
@@ -2255,6 +2394,41 @@
                         })
                         .then(data => {
                             if (data.success && data.tendencia && data.tendencia.length > 0) {
+                                // Calcular total del año siguiente
+                                const totalSiguiente = data.tendencia.reduce((sum, d) => sum + d.venta, 0);
+                                
+                                // Actualizar tarjeta con comparación
+                                const elementoTotal = document.getElementById('totalVentaAnual');
+                                if (elementoTotal) {
+                                    const totalActual = parseFloat(elementoTotal.getAttribute('data-total-original')) || 0;
+                                    const diferencia = totalSiguiente - totalActual;
+                                    const porcentajeCambio = totalActual > 0 ? ((diferencia / totalActual) * 100) : 0;
+                                    const simbolo = diferencia >= 0 ? '↑' : '↓';
+                                    const colorCambio = diferencia >= 0 ? '#52c41a' : '#ff4d4f';
+                                    
+                                    // Si ya hay comparación con año anterior, agregar la del siguiente
+                                    const totalAnterior = elementoTotal.getAttribute('data-total-anterior');
+                                    if (totalAnterior) {
+                                        elementoTotal.innerHTML = `
+                                            Total ${añoActual}: S/ ${totalActual.toLocaleString('es-PE', {minimumFractionDigits: 0, maximumFractionDigits: 0})}<br>
+                                            <span style="font-size: 12px; color: #666;">vs ${añoActual - 1}: S/ ${parseFloat(totalAnterior).toLocaleString('es-PE', {minimumFractionDigits: 0, maximumFractionDigits: 0})}</span> | 
+                                            <span style="font-size: 12px; color: #666;">vs ${añoSiguiente}: S/ ${totalSiguiente.toLocaleString('es-PE', {minimumFractionDigits: 0, maximumFractionDigits: 0})}</span>
+                                            <span style="font-size: 13px; font-weight: 700; color: ${colorCambio}; margin-left: 8px;">
+                                                ${simbolo} ${Math.abs(porcentajeCambio).toFixed(1)}%
+                                            </span>
+                                        `;
+                                    } else {
+                                        elementoTotal.innerHTML = `
+                                            Total ${añoActual}: S/ ${totalActual.toLocaleString('es-PE', {minimumFractionDigits: 0, maximumFractionDigits: 0})}<br>
+                                            <span style="font-size: 12px; color: #666;">vs ${añoSiguiente}: S/ ${totalSiguiente.toLocaleString('es-PE', {minimumFractionDigits: 0, maximumFractionDigits: 0})}</span>
+                                            <span style="font-size: 13px; font-weight: 700; color: ${colorCambio}; margin-left: 8px;">
+                                                ${simbolo} ${Math.abs(porcentajeCambio).toFixed(1)}%
+                                            </span>
+                                        `;
+                                    }
+                                    elementoTotal.setAttribute('data-total-siguiente', totalSiguiente);
+                                }
+                                
                                 // Generar nuevos labels con el año siguiente
                                 const mesesNombres = ['Enero', 'Febrero', 'Marzo', 'Abril', 'Mayo', 'Junio', 
                                                      'Julio', 'Agosto', 'Septiembre', 'Octubre', 'Noviembre', 'Diciembre'];
@@ -2320,10 +2494,44 @@
                 }
 
                 function quitarComparacionAñoSiguiente() {
-                    // Remover el dataset del año siguiente (siempre es el último agregado)
+                    // Actualizar tarjeta: si hay comparación con año anterior, mantenerla; si no, restaurar original
+                    const elementoTotal = document.getElementById('totalVentaAnual');
+                    if (elementoTotal) {
+                        const añoOriginal = elementoTotal.getAttribute('data-año-original');
+                        const totalOriginal = parseFloat(elementoTotal.getAttribute('data-total-original')) || 0;
+                        const totalAnterior = elementoTotal.getAttribute('data-total-anterior');
+                        
+                        if (totalAnterior) {
+                            // Mantener solo comparación con año anterior
+                            const añoAnterior = parseInt(añoOriginal) - 1;
+                            const diferencia = totalOriginal - parseFloat(totalAnterior);
+                            const porcentajeCambio = parseFloat(totalAnterior) > 0 ? ((diferencia / parseFloat(totalAnterior)) * 100) : 0;
+                            const simbolo = diferencia >= 0 ? '↑' : '↓';
+                            const colorCambio = diferencia >= 0 ? '#52c41a' : '#ff4d4f';
+                            
+                            elementoTotal.innerHTML = `
+                                Total ${añoOriginal}: S/ ${totalOriginal.toLocaleString('es-PE', {minimumFractionDigits: 0, maximumFractionDigits: 0})}<br>
+                                <span style="font-size: 12px; color: #666;">vs ${añoAnterior}: S/ ${parseFloat(totalAnterior).toLocaleString('es-PE', {minimumFractionDigits: 0, maximumFractionDigits: 0})}</span>
+                                <span style="font-size: 13px; font-weight: 700; color: ${colorCambio}; margin-left: 8px;">
+                                    ${simbolo} ${Math.abs(porcentajeCambio).toFixed(1)}%
+                                </span>
+                            `;
+                        } else {
+                            // Restaurar a original sin comparaciones
+                            elementoTotal.textContent = `Total ${añoOriginal}: S/ ${totalOriginal.toLocaleString('es-PE', {minimumFractionDigits: 0, maximumFractionDigits: 0})}`;
+                        }
+                        elementoTotal.removeAttribute('data-total-siguiente');
+                    }
+                    
+                    // Remover el dataset del año siguiente
                     if (window.chartTendencia && window.chartTendencia.data.datasets.length > 3) {
-                        window.chartTendencia.data.datasets.pop();
-                        window.chartTendencia.update();
+                        // Buscar y eliminar el dataset del año siguiente
+                        const añoSiguiente = {{ año_seleccionado }} + 1;
+                        const index = window.chartTendencia.data.datasets.findIndex(ds => ds.label === `Venta ${añoSiguiente}`);
+                        if (index > -1) {
+                            window.chartTendencia.data.datasets.splice(index, 1);
+                            window.chartTendencia.update();
+                        }
                     }
                 }
 
