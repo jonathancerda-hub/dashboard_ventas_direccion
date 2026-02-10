@@ -293,7 +293,57 @@ def api_tendencia():
         
         # Obtener resumen mensual
         if data_source == 'supabase':
-            resumen_mensual = supabase_manager.get_sales_by_month(fecha_inicio, fecha_fin)
+            # Para Supabase, cargar datos completos del año y aplicar mismos filtros que KPI
+            print(f"🔥 API TENDENCIA: Cargando datos de Supabase para {año} con filtros correctos")
+            sales_data_anual_api = supabase_manager.get_dashboard_data(fecha_inicio, fecha_fin)
+            print(f"✅ API TENDENCIA: Obtenidos {len(sales_data_anual_api)} registros de Supabase")
+            
+            # Generar resumen mensual con los MISMOS filtros que el KPI Venta
+            resumen_mensual = {}
+            meses_es_build = {
+                1: 'enero', 2: 'febrero', 3: 'marzo', 4: 'abril', 5: 'mayo', 6: 'junio',
+                7: 'julio', 8: 'agosto', 9: 'septiembre', 10: 'octubre', 11: 'noviembre', 12: 'diciembre'
+            }
+            
+            for sale in sales_data_anual_api:
+                invoice_date = sale.get('invoice_date')
+                if not invoice_date:
+                    continue
+                
+                # Extraer año y mes
+                if isinstance(invoice_date, str):
+                    año_venta = int(invoice_date[:4])
+                    mes_venta = int(invoice_date[5:7])
+                else:
+                    año_venta = invoice_date.year
+                    mes_venta = invoice_date.month
+                
+                if año_venta != año:
+                    continue
+                
+                # Aplicar MISMOS filtros que el KPI Venta
+                linea_comercial = sale.get('commercial_line_name', '')
+                
+                # Filtrar VENTA INTERNACIONAL
+                if linea_comercial and 'VENTA INTERNACIONAL' in str(linea_comercial).upper():
+                    continue
+                
+                # Filtrar ventas sin línea comercial
+                if not linea_comercial or linea_comercial in ['Sin Línea', 'NINGUNO', '']:
+                    continue
+                
+                balance = float(sale.get('balance') or sale.get('price_subtotal', 0))
+                
+                # Filtrar ventas negativas o cero
+                if balance <= 0:
+                    continue
+                
+                mes_key = f"{meses_es_build[mes_venta]} {año_venta}"
+                resumen_mensual[mes_key] = resumen_mensual.get(mes_key, 0) + balance
+            
+            print(f"✅ API TENDENCIA: Resumen generado con filtros - {len(resumen_mensual)} meses")
+            if 'enero 2025' in resumen_mensual:
+                print(f"   📊 Enero 2025: S/ {resumen_mensual['enero 2025']:,.2f}")
         else:
             resumen_mensual = data_manager.get_sales_summary_by_month(fecha_inicio, fecha_fin)
         
@@ -311,19 +361,15 @@ def api_tendencia():
             fecha_mes = datetime(año, mes_num, 1)
             mes_key = f"{año}-{mes_num:02d}"
             
-            # Buscar venta del mes
-            venta_mes = 0
-            label_busqueda_es = f"{meses_es[mes_num]} {año}"
-            label_busqueda_en = fecha_mes.strftime('%B %Y').lower()
+            # Buscar venta del mes (formato esperado: "enero 2025", "febrero 2025", etc.)
+            label_busqueda = f"{meses_es[mes_num]} {año}"
+            venta_mes = resumen_mensual.get(label_busqueda, 0)
             
-            for key, val in resumen_mensual.items():
-                key_lower = key.lower()
-                if label_busqueda_es == key_lower or label_busqueda_en == key_lower:
-                    venta_mes = val
-                    break
-                if meses_es[mes_num] in key_lower and str(año) in key_lower:
-                    venta_mes = val
-                    break
+            # DEBUG temporal
+            if año == 2025 and mes_num == 1:
+                print(f"🔍 API /tendencia - Buscando: '{label_busqueda}'")
+                print(f"🔍 API /tendencia - Encontrado: {venta_mes}")
+                print(f"🔍 API /tendencia - Keys en resumen_mensual: {list(resumen_mensual.keys())[:3]}")
             
             # Buscar meta del mes
             try:
@@ -410,6 +456,185 @@ def api_rfm_canal():
         return jsonify({'error': str(e)}), 500
 
 
+def generar_datos_ventas_mes(año_para_grafico, data_source, fecha_actual):
+    """
+    Genera los datos del gráfico de ventas por mes con filtros farmacéuticos.
+    Esta función se ejecuta siempre, incluso cuando hay caché.
+    Lee directamente de Supabase o Odoo según el año.
+    """
+    meses_español = {
+        1: 'Enero', 2: 'Febrero', 3: 'Marzo', 4: 'Abril',
+        5: 'Mayo', 6: 'Junio', 7: 'Julio', 8: 'Agosto',
+        9: 'Septiembre', 10: 'Octubre', 11: 'Noviembre', 12: 'Diciembre'
+    }
+    
+    ventas_detalladas_por_mes = []
+    filtros_disponibles = {
+        'lineas_comerciales': set(),
+        'categorias': set(),
+        'ciclos_vida': set(),
+        'vias_administracion': set(),
+        'clasificaciones': set(),
+        'formas_farmaceuticas': set(),
+        'lineas_produccion': set()
+    }
+    
+    try:
+        fecha_inicio_anual = f"{año_para_grafico}-01-01"
+        fecha_fin_anual = f"{año_para_grafico}-12-31"
+        
+        print(f"📅 Cargando ventas anuales: {fecha_inicio_anual} a {fecha_fin_anual}")
+        
+        if data_source == 'supabase':
+            sales_data_anual = supabase_manager.get_dashboard_data(fecha_inicio_anual, fecha_fin_anual)
+        else:
+            sales_data_anual = data_manager.get_sales_lines(
+                date_from=fecha_inicio_anual,
+                date_to=fecha_fin_anual,
+                limit=50000
+            )
+        
+        print(f"📊 Ventas anuales obtenidas: {len(sales_data_anual)} registros")
+        
+        for sale in sales_data_anual:
+            # Manejar diferentes formatos de fecha según fuente
+            fecha_str = sale.get('invoice_date') or sale.get('date_order', '')
+            if not fecha_str:
+                continue
+                
+            try:
+                fecha_obj = datetime.strptime(fecha_str[:10], '%Y-%m-%d')
+                mes_nombre = meses_español.get(fecha_obj.month, '')
+                
+                if not mes_nombre:
+                    continue
+                
+                # Extraer campos (tanto Supabase como Odoo tienen la misma estructura ahora)
+                if data_source == 'supabase':
+                    # Supabase: campos ya vienen como strings simples
+                    linea_comercial = sale.get('commercial_line_name', 'Sin Línea')
+                    
+                    # Filtrar VENTA INTERNACIONAL (igual que KPI Venta)
+                    if linea_comercial and 'VENTA INTERNACIONAL' in str(linea_comercial).upper():
+                        continue
+                    
+                    # Filtrar ventas sin línea comercial válida (igual que KPI Venta)
+                    if not linea_comercial or linea_comercial in ['Sin Línea', 'NINGUNO', '']:
+                        continue
+                    
+                    if linea_comercial and linea_comercial != 'Sin Línea':
+                        linea_comercial = normalizar_linea_comercial(linea_comercial)
+                    
+                    categoria = sale.get('category_name', 'Sin Categoría')
+                    via_administracion = sale.get('administration_way_name', 'No Definido')
+                    clasificacion = sale.get('pharmacological_classification_name', 'No Definido')
+                    forma_farmaceutica = sale.get('pharmaceutical_forms_name', 'No Definido')
+                    linea_produccion = sale.get('production_line_name', 'No Definido')
+                    ciclo_vida = sale.get('product_life_cycle', 'No Definido')
+                    
+                    total_venta = abs(float(sale.get('price_subtotal', 0)))
+                else:
+                    # Odoo: campos vienen como [id, nombre]
+                    linea_comercial_info = sale.get('commercial_line_national_id')
+                    linea_comercial = 'Sin Línea'
+                    if linea_comercial_info and isinstance(linea_comercial_info, list) and len(linea_comercial_info) > 1:
+                        linea_comercial_original = linea_comercial_info[1]
+                        # Filtrar VENTA INTERNACIONAL (igual que KPI Venta)
+                        if 'VENTA INTERNACIONAL' in linea_comercial_original.upper():
+                            continue
+                        linea_comercial = normalizar_linea_comercial(linea_comercial_original)
+                    
+                    categ_info = sale.get('categ_id')
+                    categoria = 'Sin Categoría'
+                    if categ_info and isinstance(categ_info, list) and len(categ_info) > 1:
+                        categoria = categ_info[1]
+                    
+                    via_info = sale.get('administration_way_id')
+                    via_administracion = 'No Definido'
+                    if via_info and isinstance(via_info, list) and len(via_info) > 1:
+                        via_administracion = via_info[1]
+                    
+                    clasif_info = sale.get('pharmacological_classification_id')
+                    clasificacion = 'No Definido'
+                    if clasif_info and isinstance(clasif_info, list) and len(clasif_info) > 1:
+                        clasificacion = clasif_info[1]
+                    
+                    forma_info = sale.get('pharmaceutical_forms_id')
+                    forma_farmaceutica = 'No Definido'
+                    if forma_info and isinstance(forma_info, list) and len(forma_info) > 1:
+                        forma_farmaceutica = forma_info[1]
+                    
+                    linea_prod_info = sale.get('production_line_id')
+                    linea_produccion = 'No Definido'
+                    if linea_prod_info and isinstance(linea_prod_info, list) and len(linea_prod_info) > 1:
+                        linea_produccion = linea_prod_info[1]
+                    
+                    ciclo_vida = sale.get('product_life_cycle', 'No Definido')
+                    
+                    total_venta = abs(float(sale.get('balance', 0)))
+                
+                if not ciclo_vida or ciclo_vida == '':
+                    ciclo_vida = 'No Definido'
+                
+                if total_venta <= 0:
+                    continue
+                
+                # Agregar a filtros
+                filtros_disponibles['lineas_comerciales'].add(linea_comercial)
+                filtros_disponibles['categorias'].add(categoria)
+                filtros_disponibles['ciclos_vida'].add(ciclo_vida)
+                filtros_disponibles['vias_administracion'].add(via_administracion)
+                filtros_disponibles['clasificaciones'].add(clasificacion)
+                filtros_disponibles['formas_farmaceuticas'].add(forma_farmaceutica)
+                filtros_disponibles['lineas_produccion'].add(linea_produccion)
+                
+                ventas_detalladas_por_mes.append({
+                    'mes_nombre': mes_nombre,
+                    'linea_comercial': linea_comercial,
+                    'categoria': categoria,
+                    'ciclo_vida': ciclo_vida,
+                    'via_administracion': via_administracion,
+                    'clasificacion': clasificacion,
+                    'forma_farmaceutica': forma_farmaceutica,
+                    'linea_produccion': linea_produccion,
+                    'total': total_venta
+                })
+                
+            except Exception as e:
+                continue
+        
+        print(f"✅ Registros procesados: {len(ventas_detalladas_por_mes)}")
+        print(f"📊 Filtros: LC={len(filtros_disponibles['lineas_comerciales'])}, Cat={len(filtros_disponibles['categorias'])}, CV={len(filtros_disponibles['ciclos_vida'])}")
+        print(f"🔍 DEBUG: Saliendo del try, preparando return...")
+        
+    except Exception as e:
+        print(f"❌ Error al generar datos de ventas por mes: {e}")
+        import traceback
+        traceback.print_exc()
+    
+    print(f"🔍 DEBUG: Después del except, creando diccionario resultado...")
+    try:
+        resultado = {
+            'registros': ventas_detalladas_por_mes,
+            'filtros': {
+                'lineas_comerciales': sorted([x for x in filtros_disponibles['lineas_comerciales'] if x is not None]),
+                'categorias': sorted([x for x in filtros_disponibles['categorias'] if x is not None]),
+                'ciclos_vida': sorted([x for x in filtros_disponibles['ciclos_vida'] if x is not None]),
+                'vias_administracion': sorted([x for x in filtros_disponibles['vias_administracion'] if x is not None]),
+                'clasificaciones': sorted([x for x in filtros_disponibles['clasificaciones'] if x is not None]),
+                'formas_farmaceuticas': sorted([x for x in filtros_disponibles['formas_farmaceuticas'] if x is not None]),
+                'lineas_produccion': sorted([x for x in filtros_disponibles['lineas_produccion'] if x is not None])
+            }
+        }
+        print(f"🎯 RETORNANDO DATOS VENTAS MES: {len(resultado['registros'])} registros, {len(resultado['filtros']['lineas_comerciales'])} líneas comerciales")
+        return resultado
+    except Exception as e:
+        print(f"❌ ERROR CRÍTICO al crear diccionario resultado: {e}")
+        import traceback
+        traceback.print_exc()
+        return {'registros': [], 'filtros': {}}
+
+
 @app.route('/dashboard', methods=['GET', 'POST'])
 def dashboard():
     if 'username' not in session:
@@ -482,6 +707,11 @@ def dashboard():
                 except Exception as e:
                     print(f"⚠️ Error obteniendo grupos de venta: {e}")
                 cached_data['grupos_venta'] = grupos_venta
+            
+            # Generar gráfico de ventas por mes (siempre en tiempo real, incluso con caché)
+            print("📊 Generando gráfico de ventas por mes (desde caché)...")
+            cached_data['datos_ventas_mes_filtros'] = generar_datos_ventas_mes(año_sel_int, data_source, fecha_actual)
+            print(f"🔍 DEBUG CACHÉ: datos_ventas_mes_filtros tiene {len(cached_data['datos_ventas_mes_filtros'].get('registros', []))} registros y {len(cached_data['datos_ventas_mes_filtros'].get('filtros', {}).get('lineas_comerciales', []))} líneas")
             
             return render_template('dashboard_clean.html', **cached_data)
 
@@ -713,8 +943,8 @@ def dashboard():
                 # Contar ventas sin canal pero NO excluir
                 ventas_sin_canal += 1
             
-            # Procesar el balance de la venta
-            balance_float = float(sale.get('balance', 0))
+            # Procesar el balance de la venta (Odoo usa 'balance', Supabase usa 'price_subtotal')
+            balance_float = float(sale.get('balance') or sale.get('price_subtotal', 0))
             if balance_float != 0:
                 
                 # Sumar a ventas totales por línea
@@ -1513,7 +1743,53 @@ def dashboard():
         # Obtener resumen solo del año seleccionado (no últimos 12 meses mezclados)
         tendencia_data_source = get_data_source(año_seleccionado)
         if tendencia_data_source == 'supabase':
-            resumen_mensual = supabase_manager.get_sales_by_month(fecha_inicio_tendencia, fecha_fin_tendencia)
+            # Para Supabase, cargar datos completos del año y aplicar mismos filtros que KPI
+            sales_data_anual_tendencia = supabase_manager.get_dashboard_data(fecha_inicio_tendencia, fecha_fin_tendencia)
+            
+            # Generar resumen mensual con los MISMOS filtros que el KPI Venta
+            resumen_mensual = {}
+            meses_es = {
+                1: 'enero', 2: 'febrero', 3: 'marzo', 4: 'abril', 5: 'mayo', 6: 'junio',
+                7: 'julio', 8: 'agosto', 9: 'septiembre', 10: 'octubre', 11: 'noviembre', 12: 'diciembre'
+            }
+            
+            for sale in sales_data_anual_tendencia:
+                invoice_date = sale.get('invoice_date')
+                if not invoice_date:
+                    continue
+                
+                # Extraer año y mes
+                if isinstance(invoice_date, str):
+                    año_venta = int(invoice_date[:4])
+                    mes_venta = int(invoice_date[5:7])
+                else:
+                    año_venta = invoice_date.year
+                    mes_venta = invoice_date.month
+                
+                if año_venta != año_seleccionado:
+                    continue
+                
+                # Aplicar MISMOS filtros que el KPI Venta
+                linea_comercial = sale.get('commercial_line_name', '')
+                
+                # Filtrar VENTA INTERNACIONAL
+                if linea_comercial and 'VENTA INTERNACIONAL' in str(linea_comercial).upper():
+                    continue
+                
+                # Filtrar ventas sin línea comercial
+                if not linea_comercial or linea_comercial in ['Sin Línea', 'NINGUNO', '']:
+                    continue
+                
+                balance = float(sale.get('balance') or sale.get('price_subtotal', 0))
+                
+                # Filtrar ventas negativas o cero
+                if balance <= 0:
+                    continue
+                
+                mes_key = f"{meses_es[mes_venta]} {año_venta}"
+                resumen_mensual[mes_key] = resumen_mensual.get(mes_key, 0) + balance
+            
+            print(f"✅ Resumen mensual generado para Supabase: {len(resumen_mensual)} meses")
         else:
             resumen_mensual = data_manager.get_sales_summary_by_month(fecha_inicio_tendencia, fecha_fin_tendencia)
         
@@ -1524,17 +1800,19 @@ def dashboard():
                 1: 'enero', 2: 'febrero', 3: 'marzo', 4: 'abril', 5: 'mayo', 6: 'junio',
                 7: 'julio', 8: 'agosto', 9: 'septiembre', 10: 'octubre', 11: 'noviembre', 12: 'diciembre'
             }
+            
+            # Buscar la venta del mes en el resumen
             venta_mes = 0
-            label_busqueda_es = f"{meses_es[mes_num]} {año_seleccionado}"
-            label_busqueda_en = fecha_mes.strftime('%B %Y').lower()
-            for key, val in resumen_mensual.items():
-                key_lower = key.lower()
-                if label_busqueda_es == key_lower or label_busqueda_en == key_lower:
-                    venta_mes = val
-                    break
-                if meses_es[mes_num] in key_lower and str(año_seleccionado) in key_lower:
-                    venta_mes = val
-                    break
+            # Formato esperado: "enero 2025", "febrero 2025", etc.
+            label_busqueda = f"{meses_es[mes_num]} {año_seleccionado}"
+            venta_mes = resumen_mensual.get(label_busqueda, 0)
+            
+            # DEBUG: Ver qué está buscando y qué encuentra
+            if mes_num == 1:  # Solo enero para no llenar logs
+                print(f"🔍 TENDENCIA DEBUG - Buscando: '{label_busqueda}'")
+                print(f"🔍 TENDENCIA DEBUG - Encontrado: {venta_mes}")
+                print(f"🔍 TENDENCIA DEBUG - Keys disponibles en resumen_mensual: {list(resumen_mensual.keys())[:3]}")
+            
             try:
                 meta_key = f"{año_seleccionado}-{mes_num:02d}"
                 metas_mes_data = metas_historicas.get(meta_key, {}).get('metas', {})
@@ -1691,7 +1969,7 @@ def dashboard():
             else:
                 fecha_venta = invoice_date
             
-            balance = sale.get('balance', 0)
+            balance = sale.get('balance') or sale.get('price_subtotal', 0)
             if isinstance(balance, str):
                 balance = float(balance.replace(',', ''))
             
@@ -2061,7 +2339,7 @@ def dashboard():
                 # Quitar tildes comunes
                 departamento_nombre = departamento_nombre.replace('Á', 'A').replace('É', 'E').replace('Í', 'I').replace('Ó', 'O').replace('Ú', 'U')
 
-                balance = sale.get('balance', 0)
+                balance = sale.get('balance') or sale.get('price_subtotal', 0)
                 if isinstance(balance, str):
                     balance = float(balance.replace(',', ''))
                 
@@ -2336,6 +2614,12 @@ def dashboard():
 
         # --- FIN: LÓGICA PARA LA TABLA DEL EQUIPO ECOMMERCE ---
 
+        # --- INICIO: GRÁFICO DE VENTAS POR MES CON FILTROS ---
+        año_para_grafico = año_seleccionado
+        
+        datos_ventas_mes_filtros = generar_datos_ventas_mes(año_para_grafico, data_source, fecha_actual)
+        # --- FIN: GRÁFICO DE VENTAS POR MES CON FILTROS ---
+
         # Ordenar los datos de la tabla: primero las filas TODOS, luego DIGITAL, luego NACIONAL
         # Ordenar por venta descendente dentro de cada grupo
         datos_todos = [d for d in datos_lineas if d.get('canal') == 'TODOS']
@@ -2397,6 +2681,7 @@ def dashboard():
             'datos_geograficos': datos_geograficos_sorted,  # Nuevo: Mapa geográfico
             'datos_productos': datos_productos,
             'datos_ciclo_vida': datos_ciclo_vida if 'datos_ciclo_vida' in locals() else [],
+            'datos_ventas_mes_filtros': datos_ventas_mes_filtros,  # Nuevo: Gráfico de ventas por mes
             'fecha_actual': fecha_actual,
             'avance_lineal_pct': avance_lineal_pct,
             'faltante_meta': faltante_meta,
@@ -2466,6 +2751,7 @@ def dashboard():
                              mapa_ventas_data=[],
                              datos_productos=[],
                              datos_ciclo_vida=[],
+                             datos_ventas_mes_filtros={'registros': [], 'filtros': {}},  # Vacío en caso de error
                              fecha_actual=fecha_actual,
                              avance_lineal_pct=0,
                              faltante_meta=0,

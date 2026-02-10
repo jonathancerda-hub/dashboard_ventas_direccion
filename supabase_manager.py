@@ -187,6 +187,7 @@ class SupabaseManager:
         Returns:
             Diccionario con mes como clave y total de ventas como valor
         """
+        print("🔥🔥🔥 USANDO CÓDIGO NUEVO - VERSIÓN CON INVOICE_DATE 🔥🔥🔥")
         try:
             # Agrupar por mes con paginación
             resumen = {}
@@ -201,7 +202,7 @@ class SupabaseManager:
             
             while True:
                 result = self.supabase.table('sales_lines')\
-                    .select('año, mes, price_subtotal')\
+                    .select('invoice_date, price_subtotal, commercial_line_name')\
                     .gte('invoice_date', fecha_inicio)\
                     .lte('invoice_date', fecha_fin)\
                     .range(offset, offset + page_size - 1)\
@@ -211,9 +212,31 @@ class SupabaseManager:
                     break
                 
                 for row in result.data:
-                    año = row.get('año')
-                    mes = row.get('mes')
+                    invoice_date = row.get('invoice_date')
+                    if not invoice_date:
+                        continue
+                    
+                    # Extraer año y mes del invoice_date (formato: YYYY-MM-DD)
+                    año = int(invoice_date[:4])
+                    mes = int(invoice_date[5:7])
+                    
                     subtotal = float(row.get('price_subtotal', 0))
+                    commercial_line = row.get('commercial_line_name', '')
+                    
+                    # Filtrar ventas negativas o cero (devoluciones, ajustes)
+                    if subtotal <= 0:
+                        continue
+                    
+                    # NOTA: No aplicamos filtro de categorías porque los datos de Supabase
+                    # ya están pre-filtrados y no tienen la columna categ_id
+                    
+                    # Filtrar VENTA INTERNACIONAL (igual que KPI Venta)
+                    if commercial_line and 'VENTA INTERNACIONAL' in str(commercial_line).upper():
+                        continue
+                    
+                    # Filtrar ventas sin línea comercial (igual que KPI Venta)
+                    if not commercial_line or commercial_line in ['Sin Línea', 'NINGUNO', '']:
+                        continue
                     
                     mes_nombre = f"{meses_es.get(mes, mes)} {año}"
                     resumen[mes_nombre] = resumen.get(mes_nombre, 0) + subtotal
@@ -272,9 +295,13 @@ class SupabaseManager:
             return self._year_cache[año]
         
         try:
+            fecha_inicio = f"{año}-01-01"
+            fecha_fin = f"{año}-12-31"
+            
             result = self.supabase.table('sales_lines')\
                 .select('id', count='exact')\
-                .eq('año', año)\
+                .gte('invoice_date', fecha_inicio)\
+                .lte('invoice_date', fecha_fin)\
                 .limit(1)\
                 .execute()
             
@@ -350,9 +377,17 @@ class SupabaseManager:
                 # Agregar ID de categoría si existe en Supabase
                 'categ_id': [sale.get('categoria_id'), sale.get('categoria_producto')] if sale.get('categoria_id') else ([0, sale.get('categoria_producto')] if sale.get('categoria_producto') else False),
                 'categoria_producto': sale.get('categoria_producto'),
+                'category_name': sale.get('categoria_producto'),
                 
                 # Campo crítico para cálculo de IPN (Introducción de Productos Nuevos)
-                'product_life_cycle': sale.get('product_life_cycle')
+                'product_life_cycle': sale.get('product_life_cycle'),
+                
+                # Campos farmacéuticos actualizados desde Odoo
+                'commercial_line_name': sale.get('commercial_line_name'),
+                'administration_way_name': sale.get('administration_way_name'),
+                'pharmacological_classification_name': sale.get('pharmacological_classification_name'),
+                'pharmaceutical_forms_name': sale.get('pharmaceutical_forms_name'),
+                'production_line_name': sale.get('production_line_name')
             }
             formatted_data.append(formatted_sale)
         
