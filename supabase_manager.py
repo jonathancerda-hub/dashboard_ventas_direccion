@@ -130,7 +130,7 @@ class SupabaseManager:
             año = int(date_from[:4])
             table_name = self._get_table_for_year(año)
             result = self.supabase.table(table_name)\
-                .select('partner_id, canal')\
+                .select('partner_id, sales_channel_name')\
                 .gte('invoice_date', date_from)\
                 .lte('invoice_date', date_to)\
                 .execute()
@@ -141,7 +141,7 @@ class SupabaseManager:
             # Agrupar clientes por canal
             clientes_por_canal = {}
             for row in result.data:
-                canal = row.get('canal') or 'SIN CANAL'
+                canal = row.get('sales_channel_name') or 'SIN CANAL'
                 partner_id = row.get('partner_id')
                 
                 if not partner_id:
@@ -345,54 +345,104 @@ class SupabaseManager:
         for sale in sales_data:
             # Convertir campos simples de Supabase a formato Odoo [id, "nombre"]
             # Aplicar abs() para asegurar que todos los valores sean positivos
-            # (igual que se hace en Odoo después de multiplicar por -1)
             price_subtotal = abs(float(sale.get('price_subtotal', 0)))
+            balance = abs(float(sale.get('balance', 0)))
             
+            # Mapeo de campos de la nueva estructura de Supabase
             formatted_sale = {
-                'invoice_id': sale.get('invoice_id'),
-                'move_id': [sale.get('invoice_id'), sale.get('invoice_name')] if sale.get('invoice_id') else False,
-                'invoice_name': sale.get('invoice_name'),
-                'move_name': sale.get('invoice_name'),
+                # Factura/Move
+                'invoice_id': sale.get('move_id'),
+                'move_id': [sale.get('move_id'), sale.get('move_name')] if sale.get('move_id') else False,
+                'invoice_name': sale.get('move_name'),
+                'move_name': sale.get('move_name'),
                 'invoice_date': sale.get('invoice_date'),
+                'move_state': sale.get('move_state'),
+                'payment_state': sale.get('payment_state'),
+                
+                # Cliente
                 'partner_id': [sale.get('partner_id'), sale.get('partner_name')] if sale.get('partner_id') else False,
                 'partner_name': sale.get('partner_name'),
+                'vat': sale.get('vat'),
+                
+                # Producto
                 'product_id': [sale.get('product_id'), sale.get('product_name')] if sale.get('product_id') else False,
                 'product_name': sale.get('product_name'),
                 'name': sale.get('product_name'),  # Odoo usa 'name' para nombre de producto
-                'product_code': sale.get('product_code'),
-                'default_code': sale.get('product_code'),
-                'quantity': sale.get('quantity', 0),
-                'price_unit': sale.get('price_unit', 0),
+                'product_code': sale.get('default_code'),
+                'default_code': sale.get('default_code'),
+                'quantity': float(sale.get('quantity', 0)),
+                'price_unit': float(sale.get('price_unit', 0)),
                 'price_subtotal': price_subtotal,
-                'balance': price_subtotal,
+                'balance': balance,
                 
-                # Campos relacionales convertidos a formato Odoo [id, "nombre"]
-                # Nota: usar commercial_line_name (nombre real en Supabase)
-                'commercial_line_national_id': [0, sale.get('commercial_line_name')] if sale.get('commercial_line_name') else False,
+                # Línea Comercial (usando el ID y nombre reales)
+                'commercial_line_national_id': [sale.get('commercial_line_national_id'), sale.get('commercial_line_name')] if sale.get('commercial_line_national_id') else False,
                 'linea_comercial': sale.get('commercial_line_name'),
                 
-                'invoice_user_id': [0, sale.get('vendedor')] if sale.get('vendedor') else False,
-                'vendedor': sale.get('vendedor'),
+                # Vendedor (invoice_user)
+                'invoice_user_id': [sale.get('invoice_user_id'), sale.get('invoice_user_name')] if sale.get('invoice_user_id') else False,
+                'vendedor': sale.get('invoice_user_name'),
                 
-                'sales_channel_id': [0, sale.get('canal')] if sale.get('canal') else False,
-                'canal': sale.get('canal'),
+                # Canal de venta
+                'sales_channel_id': [sale.get('sales_channel_id'), sale.get('sales_channel_name')] if sale.get('sales_channel_id') else False,
+                'canal': sale.get('sales_channel_name'),
                 
-                'state_id': [0, sale.get('provincia')] if sale.get('provincia') else False,
-                'ciudad': sale.get('ciudad'),
-                'city': sale.get('ciudad'),
-                'provincia': sale.get('provincia'),
+                # Ruta/Zona
+                'route_id': [sale.get('route_id'), sale.get('route_name')] if sale.get('route_id') else False,
+                'zona': sale.get('route_name'),
+                'ruta': sale.get('route_name'),
                 
-                'route_id': [0, sale.get('zona')] if sale.get('zona') else False,
-                'zona': sale.get('zona'),
-                'ruta': sale.get('ruta'),
+                # Categoría de producto
+                'categ_id': [sale.get('categ_id'), sale.get('categ_name')] if sale.get('categ_id') else False,
+                'categoria_producto': sale.get('categ_name'),
                 
-                'tipo_venta': sale.get('tipo_venta'),
-                # Agregar ID de categoría si existe en Supabase
-                'categ_id': [sale.get('categoria_id'), sale.get('categoria_producto')] if sale.get('categoria_id') else ([0, sale.get('categoria_producto')] if sale.get('categoria_producto') else False),
-                'categoria_producto': sale.get('categoria_producto'),
+                # Línea de producción
+                'production_line_id': [sale.get('production_line_id'), sale.get('production_line_name')] if sale.get('production_line_id') else False,
+                'production_line': sale.get('production_line_name'),
                 
-                # Campo crítico para cálculo de IPN (Introducción de Productos Nuevos)
-                'product_life_cycle': sale.get('product_life_cycle')
+                # Forma farmacéutica
+                'pharmaceutical_forms_id': [sale.get('pharmaceutical_forms_id'), sale.get('pharmaceutical_forms_name')] if sale.get('pharmaceutical_forms_id') else False,
+                'pharmaceutical_form': sale.get('pharmaceutical_forms_name'),
+                
+                # Clasificación farmacológica
+                'pharmacological_classification_id': [sale.get('pharmacological_classification_id'), sale.get('pharmacological_classification_name')] if sale.get('pharmacological_classification_id') else False,
+                'pharmacological_classification': sale.get('pharmacological_classification_name'),
+                
+                # Vía de administración
+                'administration_way_id': [sale.get('administration_way_id'), sale.get('administration_way_name')] if sale.get('administration_way_id') else False,
+                'administration_way': sale.get('administration_way_name'),
+                
+                # Ciclo de vida del producto (crítico para IPN)
+                'product_life_cycle': sale.get('product_life_cycle'),
+                
+                # Orden de venta
+                'order_id': sale.get('order_id'),
+                'order_name': sale.get('order_name'),
+                'order_date': sale.get('order_date'),
+                'order_state': sale.get('order_state'),
+                'order_user_id': [sale.get('order_user_id'), sale.get('order_user_name')] if sale.get('order_user_id') else False,
+                'order_user_name': sale.get('order_user_name'),
+                'invoice_origin': sale.get('invoice_origin'),
+                'order_origin': sale.get('order_origin'),
+                
+                # Dirección de envío
+                'partner_shipping_id': [sale.get('partner_shipping_id'), sale.get('partner_shipping_name')] if sale.get('partner_shipping_id') else False,
+                'partner_shipping_name': sale.get('partner_shipping_name'),
+                
+                # Observaciones y referencias
+                'delivery_observations': sale.get('delivery_observations'),
+                'client_order_ref': sale.get('client_order_ref'),
+                
+                # Tipo de documento
+                'l10n_latam_document_type_id': [sale.get('l10n_latam_document_type_id'), sale.get('document_type_name')] if sale.get('l10n_latam_document_type_id') else False,
+                'document_type_name': sale.get('document_type_name'),
+                
+                # NOTA: Los campos provincia/state_id NO existen en la nueva estructura
+                # Se necesitará obtener estos datos de otras fuentes o del partner_id
+                'state_id': False,
+                'ciudad': None,
+                'city': None,
+                'provincia': None,
             }
             formatted_data.append(formatted_sale)
         
