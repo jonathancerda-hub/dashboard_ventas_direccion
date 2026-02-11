@@ -437,12 +437,11 @@ class SupabaseManager:
                 'l10n_latam_document_type_id': [sale.get('l10n_latam_document_type_id'), sale.get('document_type_name')] if sale.get('l10n_latam_document_type_id') else False,
                 'document_type_name': sale.get('document_type_name'),
                 
-                # NOTA: Los campos provincia/state_id NO existen en la nueva estructura
-                # Se necesitará obtener estos datos de otras fuentes o del partner_id
-                'state_id': False,
-                'ciudad': None,
-                'city': None,
-                'provincia': None,
+                # Estado/Provincia (agregados desde Odoo)
+                'state_id': [sale.get('state_id'), sale.get('state_name')] if sale.get('state_id') else False,
+                'ciudad': sale.get('city'),
+                'city': sale.get('city'),
+                'provincia': sale.get('state_name'),
             }
             formatted_data.append(formatted_sale)
         
