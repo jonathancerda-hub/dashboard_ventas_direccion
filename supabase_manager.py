@@ -25,6 +25,12 @@ class SupabaseManager:
         self._year_cache = {}  # Cache para años disponibles
         print("✅ Conexión a Supabase establecida")
     
+    def _get_table_for_year(self, año: int) -> str:
+        """Determina qué tabla usar según el año"""
+        if año == 2025:
+            return 'ventas_odoo_2025'
+        return 'sales_lines'  # Tabla genérica para otros años
+    
     def get_sales_data(self, fecha_inicio: str, fecha_fin: str) -> List[Dict]:
         """
         Obtiene líneas de venta de Supabase para un rango de fechas
@@ -38,12 +44,16 @@ class SupabaseManager:
             Lista de diccionarios con las líneas de venta
         """
         try:
+            # Determinar tabla según el año
+            año = int(fecha_inicio[:4])
+            table_name = self._get_table_for_year(año)
+            
             all_data = []
             page_size = 1000
             offset = 0
             
             while True:
-                result = self.supabase.table('sales_lines')\
+                result = self.supabase.table(table_name)\
                     .select('*')\
                     .gte('invoice_date', fecha_inicio)\
                     .lte('invoice_date', fecha_fin)\
@@ -79,7 +89,9 @@ class SupabaseManager:
             Número de clientes únicos
         """
         try:
-            result = self.supabase.table('sales_lines')\
+            año = int(date_from[:4])
+            table_name = self._get_table_for_year(año)
+            result = self.supabase.table(table_name)\
                 .select('partner_id')\
                 .gte('invoice_date', date_from)\
                 .lte('invoice_date', date_to)\
@@ -115,7 +127,9 @@ class SupabaseManager:
             Dict con {nombre_canal: num_clientes}
         """
         try:
-            result = self.supabase.table('sales_lines')\
+            año = int(date_from[:4])
+            table_name = self._get_table_for_year(año)
+            result = self.supabase.table(table_name)\
                 .select('partner_id, canal')\
                 .gte('invoice_date', date_from)\
                 .lte('invoice_date', date_to)\
@@ -179,13 +193,15 @@ class SupabaseManager:
     def get_sales_by_month(self, fecha_inicio: str, fecha_fin: str) -> Dict[str, float]:
         """
         Obtiene resumen de ventas agrupadas por mes con paginación
+        Los datos en Supabase YA tienen los filtros aplicados cuando se cargaron
+        Solo se agrupa y suma, sin aplicar filtros adicionales
         
         Args:
             fecha_inicio: Fecha inicial en formato 'YYYY-MM-DD'
             fecha_fin: Fecha final en formato 'YYYY-MM-DD'
         
         Returns:
-            Diccionario con mes como clave y total de ventas como valor
+            Diccionario con mes como clave ('enero 2025') y total de ventas como valor
         """
         try:
             # Agrupar por mes con paginación
@@ -197,13 +213,21 @@ class SupabaseManager:
             
             page_size = 1000
             offset = 0
-            total_procesado = 0
+            total_registros = 0
+            
+            # Determinar tabla según el año
+            año = int(fecha_inicio[:4])
+            table_name = self._get_table_for_year(año)
+            
+            print(f"🔍 get_sales_by_month: Consultando {fecha_inicio} a {fecha_fin} en tabla {table_name}")
             
             while True:
-                result = self.supabase.table('sales_lines')\
-                    .select('año, mes, price_subtotal')\
+                # Obtener solo invoice_date y price_subtotal, ordenado por fecha
+                result = self.supabase.table(table_name)\
+                    .select('invoice_date, price_subtotal')\
                     .gte('invoice_date', fecha_inicio)\
                     .lte('invoice_date', fecha_fin)\
+                    .order('invoice_date')\
                     .range(offset, offset + page_size - 1)\
                     .execute()
                 
@@ -211,24 +235,34 @@ class SupabaseManager:
                     break
                 
                 for row in result.data:
-                    año = row.get('año')
-                    mes = row.get('mes')
-                    subtotal = float(row.get('price_subtotal', 0))
+                    invoice_date = row.get('invoice_date', '')
+                    price_subtotal = float(row.get('price_subtotal', 0))
+                    
+                    if not invoice_date or len(invoice_date) < 7:
+                        continue
+                    
+                    # Extraer año y mes de invoice_date
+                    año = int(invoice_date[:4])
+                    mes = int(invoice_date[5:7])
                     
                     mes_nombre = f"{meses_es.get(mes, mes)} {año}"
-                    resumen[mes_nombre] = resumen.get(mes_nombre, 0) + subtotal
-                    total_procesado += 1
+                    resumen[mes_nombre] = resumen.get(mes_nombre, 0) + price_subtotal
+                    total_registros += 1
                 
                 if len(result.data) < page_size:
                     break
                 
                 offset += page_size
             
-            print(f"📊 Resumen mensual Supabase: {total_procesado} registros agrupados en {len(resumen)} meses")
+            print(f"📊 Resumen mensual Supabase: {total_registros} registros sumados")
+            print(f"   {len(resumen)} meses con datos")
+            print(f"   Total general: S/ {sum(resumen.values()):,.2f}")
             return resumen
             
         except Exception as e:
             print(f"⚠️ Error obteniendo ventas por mes: {e}")
+            import traceback
+            traceback.print_exc()
             return {}
     
     def get_goals(self, año: int, mes: Optional[int] = None) -> List[Dict]:
@@ -272,15 +306,20 @@ class SupabaseManager:
             return self._year_cache[año]
         
         try:
-            result = self.supabase.table('sales_lines')\
+            table_name = self._get_table_for_year(año)
+            # Filtrar por rango de fechas del año completo
+            fecha_inicio = f"{año}-01-01"
+            fecha_fin = f"{año}-12-31"
+            result = self.supabase.table(table_name)\
                 .select('id', count='exact')\
-                .eq('año', año)\
+                .gte('invoice_date', fecha_inicio)\
+                .lte('invoice_date', fecha_fin)\
                 .limit(1)\
                 .execute()
             
             has_data = result.count > 0 if hasattr(result, 'count') else len(result.data) > 0
             self._year_cache[año] = has_data
-            print(f"  📊 Verificado año {año}: {result.count if hasattr(result, 'count') else len(result.data)} registros, has_data={has_data}")
+            print(f"  📊 Verificado año {año} en {table_name}: {result.count if hasattr(result, 'count') else len(result.data)} registros, has_data={has_data}")
             return has_data
         except Exception as e:
             print(f"⚠️ Error verificando año en Supabase: {e}")
@@ -328,8 +367,9 @@ class SupabaseManager:
                 'balance': price_subtotal,
                 
                 # Campos relacionales convertidos a formato Odoo [id, "nombre"]
-                'commercial_line_national_id': [0, sale.get('linea_comercial')] if sale.get('linea_comercial') else False,
-                'linea_comercial': sale.get('linea_comercial'),
+                # Nota: usar commercial_line_name (nombre real en Supabase)
+                'commercial_line_national_id': [0, sale.get('commercial_line_name')] if sale.get('commercial_line_name') else False,
+                'linea_comercial': sale.get('commercial_line_name'),
                 
                 'invoice_user_id': [0, sale.get('vendedor')] if sale.get('vendedor') else False,
                 'vendedor': sale.get('vendedor'),
@@ -375,9 +415,11 @@ class SupabaseManager:
             all_partners = set()
             page_size = 1000
             offset = 0
+            año = int(fecha_inicio[:4])
+            table_name = self._get_table_for_year(año)
             
             while True:
-                result = self.supabase.table('sales_lines')\
+                result = self.supabase.table(table_name)\
                     .select('partner_id')\
                     .gte('invoice_date', fecha_inicio)\
                     .lte('invoice_date', fecha_fin)\

@@ -774,6 +774,15 @@ def dashboard():
         # Categorías a excluir (igual que Proyecto A)
         categorias_excluidas = [315, 333, 304, 314, 318, 339]
         
+        # DEBUG: Ver estructura de un registro de ventas
+        if sales_data and len(sales_data) > 0:
+            print(f"🔍 DEBUG: Estructura del primer registro de ventas:")
+            ejemplo = sales_data[0]
+            print(f"   - Campos disponibles: {list(ejemplo.keys())}")
+            print(f"   - commercial_line_national_id: {ejemplo.get('commercial_line_national_id')}")
+            print(f"   - linea_comercial: {ejemplo.get('linea_comercial')}")
+            print(f"   - balance: {ejemplo.get('balance')}")
+        
         for sale in sales_data:
             # Excluir categorías específicas (para coincidir con Proyecto A)
             categ_id = sale.get('categ_id')
