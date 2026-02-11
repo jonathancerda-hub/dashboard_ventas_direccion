@@ -437,7 +437,16 @@ def dashboard():
         años_disponibles = list(range(2020, año_actual + 1))
         
         # Obtener mes seleccionado (puede venir como "2025-02" o como "2")
-        mes_param = request.args.get('mes', fecha_actual.strftime('%Y-%m'))
+        # Si no se especifica mes, usar el mes actual solo si año==año_actual, sino usar enero
+        if 'mes' not in request.args:
+            if año_seleccionado == año_actual:
+                mes_default = fecha_actual.strftime('%Y-%m')
+            else:
+                mes_default = f"{año_seleccionado}-01"
+        else:
+            mes_default = request.args.get('mes')
+        
+        mes_param = mes_default
         
         # Si el mes ya tiene formato YYYY-MM, usarlo directamente
         if '-' in str(mes_param) and len(str(mes_param).split('-')) == 2:
@@ -466,6 +475,87 @@ def dashboard():
             cached_data['desde_cache'] = True
             cached_data['años_disponibles'] = años_disponibles
             cached_data['año_seleccionado'] = año_seleccionado
+            cached_data['mes_seleccionado'] = mes_seleccionado
+            
+            # Recalcular mes_nombre con los valores correctos
+            meses_disponibles_temp = get_meses_del_año(año_seleccionado)
+            mes_obj_temp = next((m for m in meses_disponibles_temp if m['key'] == mes_seleccionado), None)
+            cached_data['mes_nombre'] = mes_obj_temp['nombre'] if mes_obj_temp else "Mes Desconocido"
+            cached_data['meses_disponibles'] = meses_disponibles_temp
+            
+            # CRÍTICO: Recalcular tendencia_12_meses si el año solicitado es diferente
+            tendencia_año_cache = None
+            if 'tendencia_12_meses' in cached_data and len(cached_data['tendencia_12_meses']) > 0:
+                # Extraer año de la tendencia cacheada (formato: "YYYY-MM")
+                primer_mes = cached_data['tendencia_12_meses'][0].get('mes', '')
+                if '-' in primer_mes:
+                    tendencia_año_cache = int(primer_mes.split('-')[0])
+            
+            if tendencia_año_cache and tendencia_año_cache != año_seleccionado:
+                print(f"🔄 Recalculando tendencia_12_meses: caché tiene año {tendencia_año_cache}, solicitado {año_seleccionado}")
+                
+                # Recalcular tendencia para el año correcto
+                tendencia_12_meses_recalculada = []
+                fecha_inicio_tendencia = f"{año_seleccionado}-01-01"
+                fecha_fin_tendencia = f"{año_seleccionado}-12-31"
+                
+                tendencia_data_source = get_data_source(año_seleccionado)
+                if tendencia_data_source == 'supabase':
+                    resumen_mensual = supabase_manager.get_sales_by_month(fecha_inicio_tendencia, fecha_fin_tendencia)
+                else:
+                    resumen_mensual = data_manager.get_sales_summary_by_month(fecha_inicio_tendencia, fecha_fin_tendencia)
+                
+                # Obtener metas del año
+                metas_historicas = gs_manager.read_metas_por_linea()
+                
+                meses_es = {
+                    1: 'enero', 2: 'febrero', 3: 'marzo', 4: 'abril', 5: 'mayo', 6: 'junio',
+                    7: 'julio', 8: 'agosto', 9: 'septiembre', 10: 'octubre', 11: 'noviembre', 12: 'diciembre'
+                }
+                
+                for mes_num in range(1, 13):
+                    fecha_mes = datetime(año_seleccionado, mes_num, 1)
+                    mes_key = f"{año_seleccionado}-{mes_num:02d}"
+                    venta_mes = 0
+                    label_busqueda_es = f"{meses_es[mes_num]} {año_seleccionado}"
+                    label_busqueda_en = fecha_mes.strftime('%B %Y').lower()
+                    
+                    for key, val in resumen_mensual.items():
+                        key_lower = key.lower()
+                        if label_busqueda_es == key_lower or label_busqueda_en == key_lower:
+                            venta_mes = val
+                            break
+                        if meses_es[mes_num] in key_lower and str(año_seleccionado) in key_lower:
+                            venta_mes = val
+                            break
+                    
+                    try:
+                        meta_key = f"{año_seleccionado}-{mes_num:02d}"
+                        metas_mes_data = metas_historicas.get(meta_key, {}).get('metas', {})
+                        meta_mes = sum(metas_mes_data.values())
+                    except:
+                        meta_mes = 0
+                    
+                    tendencia_12_meses_recalculada.append({
+                        'mes': mes_key,
+                        'mes_nombre': fecha_mes.strftime('%b %Y'),
+                        'venta': venta_mes,
+                        'meta': meta_mes,
+                        'cumplimiento': (venta_mes / meta_mes * 100) if meta_mes > 0 else 0
+                    })
+                
+                cached_data['tendencia_12_meses'] = tendencia_12_meses_recalculada
+                print(f"✅ Tendencia recalculada: {len(tendencia_12_meses_recalculada)} meses para año {año_seleccionado}")
+            
+            print(f"\n{'='*80}")
+            print(f"🎯 RENDER DESDE CACHÉ")
+            print(f"   año_seleccionado: {cached_data['año_seleccionado']}")
+            print(f"   mes_seleccionado: {cached_data['mes_seleccionado']}")
+            print(f"   mes_nombre: {cached_data['mes_nombre']}")
+            print(f"   tendencia_12_meses: {len(cached_data.get('tendencia_12_meses', []))} meses")
+            if len(cached_data.get('tendencia_12_meses', [])) > 0:
+                print(f"   Primer mes tendencia: {cached_data['tendencia_12_meses'][0].get('mes', 'N/A')}")
+            print(f"{'='*80}\n")
             
             # Obtener grupos de venta si no están en caché (para Odoo)
             if 'grupos_venta' not in cached_data or not cached_data['grupos_venta']:
@@ -498,6 +588,8 @@ def dashboard():
         # Obtener nombre del mes seleccionado
         mes_obj = next((m for m in meses_disponibles if m['key'] == mes_seleccionado), None)
         mes_nombre = mes_obj['nombre'] if mes_obj else "Mes Desconocido"
+        
+        print(f"📋 Valores iniciales: año_seleccionado={año_seleccionado}, mes_seleccionado={mes_seleccionado}, mes_nombre={mes_nombre}")
         
         año_sel, mes_sel = mes_seleccionado.split('-')
         año_sel_int = int(año_sel)
@@ -786,7 +878,7 @@ def dashboard():
         if total_ipn > 0:
             print(f"💊 IPN calculado: S/ {total_ipn:,.2f} distribuido en {len([v for v in ventas_ipn_por_linea.values() if v > 0])} líneas")
         else:
-            print(f"⚠️ No se encontraron productos con ciclo_vida='nuevo' en las {len(sales)} ventas procesadas")
+            print(f"⚠️ No se encontraron productos con ciclo_vida='nuevo' en las {len(sales_data)} ventas procesadas")
         
         # --- Preparar datos para tabla de clientes por línea comercial CON FILTRO POR CANAL ---
         print(f"🔍 Preparando tabla de clientes por línea con filtro por canal...")
@@ -2416,9 +2508,26 @@ def dashboard():
         cache_data['desde_cache'] = False  # Se establecerá en True al leer del caché
         save_to_cache(año_sel_int, mes_sel_int, cache_data)
 
+        # DEBUG: Verificar qué se pasa al template
+        print(f"\n{'='*80}")
+        print(f"🎯 RENDER TEMPLATE - DATOS FRESCOS")
+        print(f"   año_seleccionado: {render_data['año_seleccionado']}")
+        print(f"   mes_seleccionado: {render_data['mes_seleccionado']}")
+        print(f"   mes_nombre: {render_data['mes_nombre']}")
+        print(f"   tendencia_12_meses: {len(render_data['tendencia_12_meses'])} meses")
+        if len(render_data['tendencia_12_meses']) > 0:
+            print(f"   Primer mes tendencia: {render_data['tendencia_12_meses'][0].get('mes', 'N/A')}")
+        print(f"{'='*80}\n")
+        
         return render_template('dashboard_clean.html', **render_data)
     
     except Exception as e:
+        print(f"\n❌ ERROR EN DASHBOARD: {str(e)}")
+        print(f"   Tipo de error: {type(e).__name__}")
+        import traceback
+        print(f"   Traceback:")
+        traceback.print_exc()
+        print(f"\n")
         flash(f'Error al obtener datos del dashboard: {str(e)}', 'danger')
         
         # Crear datos por defecto para evitar errores
