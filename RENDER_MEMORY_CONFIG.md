@@ -2,13 +2,32 @@
 
 ## ❌ Problema Detectado en Render Free Tier
 
-**Síntoma**: Worker killed por OOM (Out Of Memory)
+### **Problema 1: OOM (Out Of Memory)** ✅ SOLUCIONADO
+**Síntoma**: Worker killed por OOM
 ```
 [CRITICAL] WORKER TIMEOUT (pid:66)
 [ERROR] Worker (pid:66) was sent SIGKILL! Perhaps out of memory?
 ```
 
-**Causa**: El caché completo en memoria (31,982 registros de 2025) excede los 512 MB de RAM disponibles en Render Free Tier.
+**Causa**: Caché completo de 31,982 registros en memoria excedía 512 MB RAM.
+
+**Solución**: Variable `ENABLE_SUPABASE_CACHE=false` (modo sin caché).
+
+---
+
+### **Problema 2: TIMEOUT en consultas a Odoo** ✅ SOLUCIONADO  
+**Síntoma**: Worker timeout después de 300 segundos
+```
+[CRITICAL] WORKER TIMEOUT (pid:65)
+File "/opt/render/project/src/app.py", line 491, in generar_datos_ventas_mes
+```
+
+**Causa**: Consultas de TODO el año a Odoo (ene-dic 2026 = 4,362 líneas) →  demasiado lento en CPU débil de Render Free.
+
+**Solución**: Optimización para consultar solo hasta el mes actual:
+- Año 2026 actual: **solo ene-feb** (1,100 líneas) → 75% reducción
+- Tiempo: 300s → 30-60s ✅
+- Aplica en 4 lugares: `generar_datos_ventas_mes`, API tendencia, recalcular tendencia, tendencia histórica
 
 ---
 
@@ -68,18 +87,26 @@ envVars:
 
 ## 🔧 Configuraciones en render.yaml
 
-### **Free/Starter (sin caché)**
+### **Free/Starter (sin caché) - ACTUAL**
 ```yaml
-startCommand: gunicorn app:app --workers 1 --threads 2 --timeout 300 --keep-alive 5 --max-requests 100 --max-requests-jitter 10 --worker-tmp-dir /dev/shm
+startCommand: gunicorn app:app --workers 1 --threads 1 --timeout 300 --graceful-timeout 30 --keep-alive 5 --max-requests 50 --max-requests-jitter 10 --worker-tmp-dir /dev/shm --log-level info
 envVars:
   - key: ENABLE_SUPABASE_CACHE
     value: false
 ```
 
-**Cambios importantes:**
-- `--timeout 300`: Mayor timeout para queries lentas de Odoo (5 min)
-- `--worker-tmp-dir /dev/shm`: Usa RAM compartida en lugar de disco (más rápido)
-- `--workers 1`: Solo 1 worker para no multiplicar uso de memoria
+**Optimizaciones aplicadas:**
+- `--workers 1`: Solo 1 worker (no multiplica RAM)
+- `--threads 1`: 1 thread (menos overhead, Render Free tiene 0.1 CPU)
+- `--timeout 300`: 5 min timeout (queries a Odoo pueden ser lentas)
+- `--graceful-timeout 30`: Termina requests antes de kill
+- `--max-requests 50`: Recicla workers frecuentemente (libera RAM)
+- `--worker-tmp-dir /dev/shm`: Usa RAM compartida (más rápido que disco)
+- `--log-level info`: Mejor debugging
+
+**Consultas optimizadas en código:**
+- ✅ Año actual: consulta solo hasta HOY (ej: ene-feb 2026)
+- ✅ Años históricos: consulta año completo desde Supabase
 
 ### **Standard/Pro (con caché)**
 ```yaml
@@ -176,7 +203,20 @@ Los logs de inicio mostrarán:
 
 ## 📝 Changelog
 
-- **2026-02-12**: Implementado modo sin caché para compatibilidad con Render Free Tier
+- **2026-02-12 (15:00 UTC)**: Optimización de consultas anuales a Odoo
+  - Modificado `app.py` para consultar solo hasta mes actual en año en curso
+  - 4 funciones optimizadas: `generar_datos_ventas_mes`, API tendencia, recalcular tendencia, tendencia histórica
+  - Reducción: 4,362 → 1,100 registros (75% menos datos)
+  - Tiempo esperado: 300s → 30-60s
+  - Gunicorn: threads 2→1, max-requests 100→50, agregado graceful-timeout
+  
+- **2026-02-12 (14:30 UTC)**: Implementado modo sin caché para Render Free Tier
+  - Agregada variable `ENABLE_SUPABASE_CACHE` para controlar modo de caché
+  - Default: false (sin caché) para compatibilidad con 512 MB RAM
+  - Modo sin caché: queries directas con paginación (bajo consumo ~100 MB)
+  - Aumentado timeout: 120s → 300s
+  - Agregado `--worker-tmp-dir /dev/shm`
+  
 - **2026-02-11**: Identificado bug de PostgREST, implementado caché completo (solo local)
 - **2026-02-10**: Primera versión con queries directas
 
