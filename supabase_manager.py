@@ -42,6 +42,43 @@ class SupabaseManager:
             return 'ventas_odoo_2025'
         return 'sales_lines'  # Tabla genérica para otros años
     
+    def _get_all_sales_for_year(self, año: int) -> List[Dict]:
+        """
+        Obtiene TODOS los registros de un año sin filtros de fecha
+        Workaround para bug de Supabase que pierde datos con .gte()/.lte() + paginación
+        
+        Args:
+            año: Año a consultar
+            
+        Returns:
+            Lista con todos los registros del año
+        """
+        table_name = self._get_table_for_year(año)
+        print(f"📥 Cargando TODOS los registros de {table_name}...")
+        
+        all_data = []
+        page_size = 1000
+        offset = 0
+        
+        while True:
+            result = self.supabase.table(table_name)\
+                .select('*')\
+                .range(offset, offset + page_size - 1)\
+                .execute()
+            
+            if not result.data:
+                break
+            
+            all_data.extend(result.data)
+            
+            if len(result.data) < page_size:
+                break
+            
+            offset += page_size
+        
+        print(f"✅ Cargados {len(all_data)} registros totales")
+        return all_data
+    
     def get_sales_data(self, fecha_inicio: str, fecha_fin: str) -> List[Dict]:
         """
         Obtiene líneas de venta de Supabase para un rango de fechas
@@ -269,13 +306,22 @@ class SupabaseManager:
             
             print(f"🔍 get_sales_by_month: Consultando {fecha_inicio} a {fecha_fin} en tabla {table_name}")
             
-            # Usar get_sales_data() que maneja paginación correctamente
-            all_data = self.get_sales_data(fecha_inicio, fecha_fin)
+            # WORKAROUND BUG SUPABASE: Consultar TODO el año sin filtro de fechas
+            # y filtrar manualmente en Python para evitar pérdida de datos con paginación
+            all_data = self._get_all_sales_for_year(año)
+            
+            # Filtrar por rango de fechas en Python
+            filtered_data = [
+                row for row in all_data
+                if row.get('invoice_date') and 
+                   fecha_inicio <= row.get('invoice_date') <= fecha_fin
+            ]
+            print(f"🔍 Filtrado en Python: {len(filtered_data)} de {len(all_data)} registros en rango {fecha_inicio} a {fecha_fin}")
             
             # Sumar TODOS los registros sin deduplicar (los datos ya vienen correctos de Odoo)
             total_registros = 0
             
-            for row in all_data:
+            for row in filtered_data:
                 invoice_date = row.get('invoice_date', '')
                 price_subtotal = float(row.get('price_subtotal', 0))
                 
