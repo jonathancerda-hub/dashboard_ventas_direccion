@@ -469,7 +469,14 @@ def dashboard():
         data_source = get_data_source(año_sel_int)
 
         # --- REVISAR CACHÉ ANTES DE HACER CÁLCULOS ---
-        cached_data = get_cached_data(año_sel_int, mes_sel_int)
+        # Permitir bypass del caché con parámetro ?nocache=1
+        nocache = request.args.get('nocache', '0') == '1'
+        if nocache:
+            print("🚫 Parámetro nocache=1 detectado, se omitirá el caché")
+            cached_data = None
+        else:
+            cached_data = get_cached_data(año_sel_int, mes_sel_int)
+            
         if cached_data:
             cached_data['is_admin'] = is_admin # Re-inyectar datos de sesión
             cached_data['desde_cache'] = True
@@ -783,34 +790,46 @@ def dashboard():
             print(f"   - linea_comercial: {ejemplo.get('linea_comercial')}")
             print(f"   - balance: {ejemplo.get('balance')}")
         
+        # IMPORTANTE: Los datos de Supabase YA VIENEN FILTRADOS desde Odoo
+        # Solo aplicar filtros si la fuente es Odoo
+        aplicar_filtros = (data_source == 'odoo')
+        if not aplicar_filtros:
+            print(f"ℹ️ Fuente: Supabase - Los datos ya vienen filtrados, NO se aplicarán filtros adicionales")
+        else:
+            print(f"ℹ️ Fuente: Odoo - Se aplicarán filtros de categorías e internacional")
+        
         for sale in sales_data:
-            # Excluir categorías específicas (para coincidir con Proyecto A)
-            categ_id = sale.get('categ_id')
-            if categ_id and isinstance(categ_id, list) and len(categ_id) > 0:
-                categ_id_num = categ_id[0]
-                if categ_id_num in categorias_excluidas:
-                    ventas_categoria_excluida += 1
-                    continue
+            # Excluir categorías específicas (solo para Odoo)
+            if aplicar_filtros:
+                categ_id = sale.get('categ_id')
+                if categ_id and isinstance(categ_id, list) and len(categ_id) > 0:
+                    categ_id_num = categ_id[0]
+                    if categ_id_num in categorias_excluidas:
+                        ventas_categoria_excluida += 1
+                        continue
             
-            # Excluir VENTA INTERNACIONAL (exportaciones)
+            # Excluir VENTA INTERNACIONAL (solo para Odoo)
             linea_comercial = sale.get('commercial_line_national_id')
             nombre_linea_actual = None
             if linea_comercial and isinstance(linea_comercial, list) and len(linea_comercial) > 1:
                 nombre_linea_original = linea_comercial[1].upper()
-                if 'VENTA INTERNACIONAL' in nombre_linea_original:
+                if aplicar_filtros and 'VENTA INTERNACIONAL' in nombre_linea_original:
                     continue
                 # Aplicar normalización para agrupar GENVET y MARCA BLANCA como TERCEROS
                 nombre_linea_actual = normalizar_linea_comercial(nombre_linea_original)
             # NOTA: Si no tiene linea_comercial, nombre_linea_actual queda None
             # y esa venta NO se sumará a ninguna línea (se ignora silenciosamente)
             
-            # También filtrar por canal de ventas
+            # También filtrar por canal de ventas (solo para Odoo)
+            if aplicar_filtros:
+                canal_ventas = sale.get('sales_channel_id')
+                if canal_ventas and isinstance(canal_ventas, list) and len(canal_ventas) > 1:
+                    nombre_canal = canal_ventas[1].upper()
+                    if 'VENTA INTERNACIONAL' in nombre_canal or 'INTERNACIONAL' in nombre_canal:
+                        continue
+            
             canal_ventas = sale.get('sales_channel_id')
-            if canal_ventas and isinstance(canal_ventas, list) and len(canal_ventas) > 1:
-                nombre_canal = canal_ventas[1].upper()
-                if 'VENTA INTERNACIONAL' in nombre_canal or 'INTERNACIONAL' in nombre_canal:
-                    continue
-            else:
+            if not aplicar_filtros or not (canal_ventas and isinstance(canal_ventas, list)):
                 # Contar ventas sin canal pero NO excluir
                 ventas_sin_canal += 1
             
@@ -893,6 +912,14 @@ def dashboard():
         print(f"🔍 Preparando tabla de clientes por línea con filtro por canal...")
         datos_clientes_por_linea = []
         
+        # Variables para totales generales
+        total_ventas_general = 0
+        total_clientes_general = set()
+        total_ventas_digital_general = 0
+        total_clientes_digital_general = set()
+        total_ventas_nacional_general = 0
+        total_clientes_nacional_general = set()
+        
         # Obtener todas las líneas únicas de ventas_por_linea
         for nombre_linea in sorted(ventas_por_linea.keys()):
             venta_total = ventas_por_linea.get(nombre_linea, 0)
@@ -939,8 +966,48 @@ def dashboard():
                 'ticket_promedio': ticket_promedio_nacional,
                 'canal': 'NACIONAL'
             })
+            
+            # Acumular en totales generales
+            total_ventas_general += venta_total
+            total_clientes_general.update(clientes_unicos)
+            total_ventas_digital_general += venta_digital
+            total_clientes_digital_general.update(clientes_digital)
+            total_ventas_nacional_general += venta_nacional
+            total_clientes_nacional_general.update(clientes_nacional)
         
-        print(f"✅ Tabla de clientes por línea: {len(datos_clientes_por_linea)} filas (TODOS + DIGITAL + NACIONAL)")
+        # Agregar fila de TOTALES
+        num_clientes_total_general = len(total_clientes_general)
+        num_clientes_digital_general = len(total_clientes_digital_general)
+        num_clientes_nacional_general = len(total_clientes_nacional_general)
+        
+        datos_clientes_por_linea.append({
+            'nombre': '<strong>TOTAL</strong>',
+            'venta': total_ventas_general,
+            'num_clientes': num_clientes_total_general,
+            'ticket_promedio': (total_ventas_general / num_clientes_total_general) if num_clientes_total_general > 0 else 0,
+            'canal': 'TODOS',
+            'es_total': True
+        })
+        
+        datos_clientes_por_linea.append({
+            'nombre': '<strong>TOTAL</strong>',
+            'venta': total_ventas_digital_general,
+            'num_clientes': num_clientes_digital_general,
+            'ticket_promedio': (total_ventas_digital_general / num_clientes_digital_general) if num_clientes_digital_general > 0 else 0,
+            'canal': 'DIGITAL',
+            'es_total': True
+        })
+        
+        datos_clientes_por_linea.append({
+            'nombre': '<strong>TOTAL</strong>',
+            'venta': total_ventas_nacional_general,
+            'num_clientes': num_clientes_nacional_general,
+            'ticket_promedio': (total_ventas_nacional_general / num_clientes_nacional_general) if num_clientes_nacional_general > 0 else 0,
+            'canal': 'NACIONAL',
+            'es_total': True
+        })
+        
+        print(f"✅ Tabla de clientes por línea: {len(datos_clientes_por_linea)} filas (incluye fila de TOTALES)")
 
         # --- Calcular cobertura de clientes ---
         # Primero, obtener el canal de cada cliente desde res.partner
@@ -1964,6 +2031,12 @@ def dashboard():
         ]
         lista_equipos.sort(key=lambda x: x['total_ventas'], reverse=True)
         
+        # Corregir total_ventas_mes si la fuente es Supabase (ya viene filtrado correctamente)
+        if data_source == 'supabase':
+            # Usar el mismo total que la tarjeta KPI (total_venta ya calculado antes)
+            total_ventas_mes = total_venta
+            print(f"🔥 Total ventas del mes (heatmap) ajustado desde Supabase: S/ {total_ventas_mes:,.0f}")
+        
         print(f"🔥 Heatmap generado: {transacciones_procesadas} transacciones, {celdas_activas} celdas activas")
         print(f"🔥 Total ventas del mes (heatmap): S/ {total_ventas_mes:,.0f} - {len(vendedores_heatmap)} vendedores")
         print(f"🔥 Ventas sin vendedor asignado: {ventas_sin_vendedor}")
@@ -2211,10 +2284,26 @@ def dashboard():
         ]
 
         # Pre-calcular la venta total para el cálculo de porcentajes
-        total_venta = sum(ventas_por_linea.values())
+        # IMPORTANTE: Si la fuente es Supabase, usar el total real de get_sales_by_month()
+        # porque los datos ya vienen filtrados correctamente
+        if data_source == 'supabase':
+            # Obtener el total correcto desde Supabase para el mes actual
+            meses_es = {
+                1: 'enero', 2: 'febrero', 3: 'marzo', 4: 'abril', 5: 'mayo', 6: 'junio',
+                7: 'julio', 8: 'agosto', 9: 'septiembre', 10: 'octubre', 11: 'noviembre', 12: 'diciembre'
+            }
+            mes_key = f"{meses_es[mes_sel_int]} {año_sel_int}"
+            resumen_mes_actual = supabase_manager.get_sales_by_month(fecha_inicio, fecha_fin)
+            total_venta = resumen_mes_actual.get(mes_key, 0)
+            print(f"💰 Total venta desde Supabase (ya filtrado): {total_venta:,.2f}")
+        else:
+            # Para Odoo, usar la suma del loop (que SÍ aplicó filtros)
+            total_venta = sum(ventas_por_linea.values())
+            print(f"💰 Total venta calculado con filtros Odoo: {total_venta:,.2f}")
+        
         total_venta_calculado = total_venta # Renombrar para claridad en el bucle
         
-        # Log de ventas excluidas
+        # Log de ventas excluidas (solo relevante para Odoo)
         if ventas_categoria_excluida > 0:
             print(f"⚠️ Se excluyeron {ventas_categoria_excluida} líneas por categoría excluida [315, 333, 304, 314, 318, 339]")
         if ventas_sin_linea > 0:
@@ -3336,6 +3425,8 @@ def api_mapa_ventas():
         # Procesar datos por provincia
         ventas_por_provincia = {}
         clientes_por_provincia = {}
+        registros_sin_provincia = 0
+        registros_con_provincia = 0
         
         for idx, sale in enumerate(sales_data):
             try:
@@ -3364,9 +3455,10 @@ def api_mapa_ventas():
                     if canal_cliente != canal_filtro:
                         continue
                 
-                # Obtener provincia (state_id)
-                provincia_info = sale.get('state_id') or sale.get('provincia')
+                # Obtener provincia (state_id o state_name)
+                provincia_info = sale.get('state_id') or sale.get('provincia') or sale.get('state_name')
                 if not provincia_info:
+                    registros_sin_provincia += 1
                     continue
                 
                 # Normalizar nombre de provincia
@@ -3375,7 +3467,14 @@ def api_mapa_ventas():
                 elif isinstance(provincia_info, str):
                     provincia_nombre = provincia_info.upper()
                 else:
-                    continue
+                    # Si provincia_info es un número, intentar obtener state_name
+                    if sale.get('state_name'):
+                        provincia_nombre = str(sale.get('state_name')).upper()
+                    else:
+                        registros_sin_provincia += 1
+                        continue
+                
+                registros_con_provincia += 1
                 
                 # Limpiar nombre
                 provincia_nombre = re.sub(r'\s*\(PE\)\s*', '', provincia_nombre, flags=re.IGNORECASE).strip()
@@ -3426,6 +3525,10 @@ def api_mapa_ventas():
                 'ticket_promedio': round(ventas / num_clientes, 2) if num_clientes > 0 else 0
             })
         
+        print(f"   - Registros con provincia: {registros_con_provincia}")
+        print(f"   - Registros sin provincia: {registros_sin_provincia}")
+        if len(mapa_data) > 0:
+            print(f"   - Top 3 provincias: {[d['name'] for d in mapa_data[:3]]}")
         # Ordenar por ventas descendente
         mapa_data.sort(key=lambda x: x['value'], reverse=True)
         

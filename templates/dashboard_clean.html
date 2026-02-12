@@ -348,8 +348,13 @@
                 </thead>
                 <tbody id="tablaClientesLinea">
                     {% for linea in datos_clientes_por_linea %}
-                    <tr data-linea="{{ linea.nombre }}" data-canal="{{ linea.canal }}" style="{% if linea.canal != 'TODOS' %}display: none;{% endif %}">
-                        <td>{{ linea.nombre }}</td>
+                    <tr data-linea="{{ linea.nombre }}" data-canal="{{ linea.canal }}" 
+                        {% if linea.get('es_total') %}
+                        style="font-weight: bold; border-top: 3px solid #875A7B; background-color: #f8f4f7; {% if linea.canal != 'TODOS' %}display: none;{% endif %}"
+                        {% else %}
+                        style="{% if linea.canal != 'TODOS' %}display: none;{% endif %}"
+                        {% endif %}>
+                        <td>{{ linea.nombre|safe }}</td>
                         <td>{{ "{:,.0f}".format(linea.venta) }}</td>
                         <td>{{ linea.num_clientes }}</td>
                         <td>{{ "{:,.0f}".format(linea.ticket_promedio) }}</td>

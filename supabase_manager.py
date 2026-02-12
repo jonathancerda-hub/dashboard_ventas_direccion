@@ -23,6 +23,11 @@ class SupabaseManager:
         
         self.supabase: Client = create_client(supabase_url, supabase_key)
         self._year_cache = {}  # Cache para años disponibles
+        
+        # Caché de datos para evitar cargar 31K+ registros múltiples veces
+        self._all_data_cache = {}  # {table_name: [all records]}
+        self._cache_loaded = {}  # {table_name: bool}
+        
         print("✅ Conexión a Supabase establecida")
     
     def _get_table_for_year(self, año: int) -> str:
@@ -36,43 +41,64 @@ class SupabaseManager:
         Obtiene líneas de venta de Supabase para un rango de fechas
         Incluye paginación para obtener todos los registros
         
+        IMPORTANTE: Debido a un bug de Supabase/PostgREST, los filtros .gte() y .lte() 
+        en invoice_date devuelven valores incorrectos de price_subtotal.
+        
+        SOLUCIÓN: Obtiene TODOS los registros de la tabla una vez (con caché),
+        y luego filtra por fechas en Python.
+        
         Args:
             fecha_inicio: Fecha inicial en formato 'YYYY-MM-DD'
             fecha_fin: Fecha final en formato 'YYYY-MM-DD'
         
         Returns:
-            Lista de diccionarios con las líneas de venta
+            Lista de diccionarios con las líneas de venta filtradas por fecha
         """
         try:
             # Determinar tabla según el año
             año = int(fecha_inicio[:4])
             table_name = self._get_table_for_year(año)
             
-            all_data = []
-            page_size = 1000
-            offset = 0
+            # Verificar si los datos ya están en caché
+            if not self._cache_loaded.get(table_name, False):
+                print(f"📥 Cargando TODOS los registros de {table_name} en caché...")
+                all_data = []
+                page_size = 1000
+                offset = 0
+                
+                while True:
+                    result = self.supabase.table(table_name)\
+                        .select('*')\
+                        .range(offset, offset + page_size - 1)\
+                        .execute()
+                    
+                    if not result.data:
+                        break
+                    
+                    all_data.extend(result.data)
+                    
+                    if len(result.data) < page_size:
+                        break
+                    
+                    offset += page_size
+                
+                # Guardar en caché
+                self._all_data_cache[table_name] = all_data
+                self._cache_loaded[table_name] = True
+                print(f"✅ Caché cargado: {len(all_data)} registros de {table_name}")
+            else:
+                all_data = self._all_data_cache[table_name]
+                print(f"⚡ Usando caché: {len(all_data)} registros de {table_name}")
             
-            while True:
-                result = self.supabase.table(table_name)\
-                    .select('*')\
-                    .gte('invoice_date', fecha_inicio)\
-                    .lte('invoice_date', fecha_fin)\
-                    .range(offset, offset + page_size - 1)\
-                    .execute()
-                
-                if not result.data:
-                    break
-                
-                all_data.extend(result.data)
-                
-                # Si obtuvimos menos que el tamaño de página, no hay más datos
-                if len(result.data) < page_size:
-                    break
-                
-                offset += page_size
+            # Filtrar por fechas en Python (lado cliente)
+            filtered_data = [
+                record for record in all_data
+                if record.get('invoice_date') and 
+                   fecha_inicio <= record.get('invoice_date') <= fecha_fin
+            ]
             
-            print(f"📊 Supabase: {len(all_data)} registros obtenidos para {fecha_inicio} a {fecha_fin}")
-            return all_data
+            print(f"📊 Supabase: {len(filtered_data)} registros para {fecha_inicio} a {fecha_fin}")
+            return filtered_data
         except Exception as e:
             print(f"⚠️ Error obteniendo datos de Supabase: {e}")
             return []
@@ -192,9 +218,9 @@ class SupabaseManager:
     
     def get_sales_by_month(self, fecha_inicio: str, fecha_fin: str) -> Dict[str, float]:
         """
-        Obtiene resumen de ventas agrupadas por mes con paginación
-        Los datos en Supabase YA tienen los filtros aplicados cuando se cargaron
-        Solo se agrupa y suma, sin aplicar filtros adicionales
+        Obtiene resumen de ventas agrupadas por mes
+        Los datos en Supabase YA tienen los filtros aplicados cuando se cargaron desde Odoo
+        Solo se agrupa y suma TODOS los registros, sin deduplicar
         
         Args:
             fecha_inicio: Fecha inicial en formato 'YYYY-MM-DD'
@@ -204,16 +230,11 @@ class SupabaseManager:
             Diccionario con mes como clave ('enero 2025') y total de ventas como valor
         """
         try:
-            # Agrupar por mes con paginación
             resumen = {}
             meses_es = {
                 1: 'enero', 2: 'febrero', 3: 'marzo', 4: 'abril', 5: 'mayo', 6: 'junio',
                 7: 'julio', 8: 'agosto', 9: 'septiembre', 10: 'octubre', 11: 'noviembre', 12: 'diciembre'
             }
-            
-            page_size = 1000
-            offset = 0
-            total_registros = 0
             
             # Determinar tabla según el año
             año = int(fecha_inicio[:4])
@@ -221,38 +242,26 @@ class SupabaseManager:
             
             print(f"🔍 get_sales_by_month: Consultando {fecha_inicio} a {fecha_fin} en tabla {table_name}")
             
-            while True:
-                # Obtener solo invoice_date y price_subtotal, ordenado por fecha
-                result = self.supabase.table(table_name)\
-                    .select('invoice_date, price_subtotal')\
-                    .gte('invoice_date', fecha_inicio)\
-                    .lte('invoice_date', fecha_fin)\
-                    .order('invoice_date')\
-                    .range(offset, offset + page_size - 1)\
-                    .execute()
+            # Usar get_sales_data() que maneja paginación correctamente
+            all_data = self.get_sales_data(fecha_inicio, fecha_fin)
+            
+            # Sumar TODOS los registros sin deduplicar (los datos ya vienen correctos de Odoo)
+            total_registros = 0
+            
+            for row in all_data:
+                invoice_date = row.get('invoice_date', '')
+                price_subtotal = float(row.get('price_subtotal', 0))
                 
-                if not result.data:
-                    break
+                if not invoice_date or len(invoice_date) < 7:
+                    continue
                 
-                for row in result.data:
-                    invoice_date = row.get('invoice_date', '')
-                    price_subtotal = float(row.get('price_subtotal', 0))
-                    
-                    if not invoice_date or len(invoice_date) < 7:
-                        continue
-                    
-                    # Extraer año y mes de invoice_date
-                    año = int(invoice_date[:4])
-                    mes = int(invoice_date[5:7])
-                    
-                    mes_nombre = f"{meses_es.get(mes, mes)} {año}"
-                    resumen[mes_nombre] = resumen.get(mes_nombre, 0) + price_subtotal
-                    total_registros += 1
+                # Extraer año y mes de invoice_date
+                año = int(invoice_date[:4])
+                mes = int(invoice_date[5:7])
                 
-                if len(result.data) < page_size:
-                    break
-                
-                offset += page_size
+                mes_nombre = f"{meses_es.get(mes, mes)} {año}"
+                resumen[mes_nombre] = resumen.get(mes_nombre, 0) + price_subtotal
+                total_registros += 1
             
             print(f"📊 Resumen mensual Supabase: {total_registros} registros sumados")
             print(f"   {len(resumen)} meses con datos")
@@ -344,9 +353,9 @@ class SupabaseManager:
         formatted_data = []
         for sale in sales_data:
             # Convertir campos simples de Supabase a formato Odoo [id, "nombre"]
-            # Aplicar abs() para asegurar que todos los valores sean positivos
-            price_subtotal = abs(float(sale.get('price_subtotal', 0)))
-            balance = abs(float(sale.get('balance', 0)))
+            # NO aplicar abs() - las notas de crédito deben ser negativas
+            price_subtotal = float(sale.get('price_subtotal', 0))
+            balance = float(sale.get('balance', 0))
             
             # Mapeo de campos de la nueva estructura de Supabase
             formatted_sale = {
