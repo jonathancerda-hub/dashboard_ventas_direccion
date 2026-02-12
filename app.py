@@ -824,23 +824,10 @@ def dashboard():
                     print(f"⚠️ Error obteniendo grupos de venta: {e}")
                 cached_data['grupos_venta'] = grupos_venta
             
-            # Gráfico de productos: usar del caché si existe, sino omitir (optimización Render Free)
-            if 'datos_ventas_mes_filtros' not in cached_data or not cached_data.get('datos_ventas_mes_filtros'):
-                print("⏭️  Gráfico de productos omitido (no disponible en caché)")
-                cached_data['datos_ventas_mes_filtros'] = {
-                    'datos': [],
-                    'filtros': {
-                        'lineas_comerciales': [],
-                        'categorias': [],
-                        'ciclos_vida': [],
-                        'vias_administracion': [],
-                        'clasificaciones': [],
-                        'formas_farmaceuticas': [],
-                        'lineas_produccion': []
-                    }
-                }
-            else:
-                print(f"📊 Gráfico de productos cargado desde caché: {len(cached_data['datos_ventas_mes_filtros'].get('registros', []))} registros")
+            # Generar gráfico de ventas por mes (siempre en tiempo real, incluso con caché)
+            print("📊 Generando gráfico de ventas por mes (desde caché)...")
+            cached_data['datos_ventas_mes_filtros'] = generar_datos_ventas_mes(año_sel_int, data_source, fecha_actual)
+            print(f"🔍 DEBUG CACHÉ: datos_ventas_mes_filtros tiene {len(cached_data['datos_ventas_mes_filtros'].get('registros', []))} registros y {len(cached_data['datos_ventas_mes_filtros'].get('filtros', {}).get('lineas_comerciales', []))} líneas")
             
             return render_template('dashboard_clean.html', **cached_data)
 
@@ -2843,27 +2830,8 @@ def dashboard():
         # --- FIN: LÓGICA PARA LA TABLA DEL EQUIPO ECOMMERCE ---
 
         # --- INICIO: GRÁFICO DE VENTAS POR MES CON FILTROS ---
-        # ⚠️ OPTIMIZACIÓN CRÍTICA RENDER FREE:
-        # Omitir SIEMPRE en primera carga para evitar timeout
-        # Problema: Cargar 31K+ registros (2025) o 3K+ (2026) sobre red lenta = >6 min
-        # Solución: Omitir en primera carga, generar solo en desarrollo local si es necesario
-        
-        print(f"⏭️  Gráfico de productos DESHABILITADO en primera carga (Render Free Tier)")
-        print(f"    Motivo: Cargar decenas de miles de registros sobre red lenta causa timeout")
-        print(f"    Data source: {data_source}, Año: {año_seleccionado}")
-        
-        datos_ventas_mes_filtros = {
-            'datos': [],
-            'filtros': {
-                'lineas_comerciales': [],
-                'categorias': [],
-                'ciclos_vida': [],
-                'vias_administracion': [],
-                'clasificaciones': [],
-                'formas_farmaceuticas': [],
-                'lineas_produccion': []
-            }
-        }
+        año_para_grafico = año_seleccionado
+        datos_ventas_mes_filtros = generar_datos_ventas_mes(año_para_grafico, data_source, fecha_actual)
         # --- FIN: GRÁFICO DE VENTAS POR MES CON FILTROS ---
 
         # Ordenar los datos de la tabla: primero las filas TODOS, luego DIGITAL, luego NACIONAL
