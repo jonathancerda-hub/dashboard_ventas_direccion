@@ -229,6 +229,7 @@ class SupabaseManager:
         Returns:
             Diccionario con mes como clave ('enero 2025') y total de ventas como valor
         """
+        print("🔥🔥🔥 USANDO CÓDIGO NUEVO - VERSIÓN CON INVOICE_DATE 🔥🔥🔥")
         try:
             resumen = {}
             meses_es = {
