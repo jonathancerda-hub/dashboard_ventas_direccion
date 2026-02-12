@@ -824,10 +824,26 @@ def dashboard():
                     print(f"⚠️ Error obteniendo grupos de venta: {e}")
                 cached_data['grupos_venta'] = grupos_venta
             
-            # Generar gráfico de ventas por mes (siempre en tiempo real, incluso con caché)
-            print("📊 Generando gráfico de ventas por mes (desde caché)...")
-            cached_data['datos_ventas_mes_filtros'] = generar_datos_ventas_mes(año_sel_int, data_source, fecha_actual)
-            print(f"🔍 DEBUG CACHÉ: datos_ventas_mes_filtros tiene {len(cached_data['datos_ventas_mes_filtros'].get('registros', []))} registros y {len(cached_data['datos_ventas_mes_filtros'].get('filtros', {}).get('lineas_comerciales', []))} líneas")
+            # Gráfico de productos: solo regenerar si es Supabase (rápido)
+            # Para Odoo (lento), usar estructura vacía
+            if data_source == 'supabase':
+                print("📊 Generando gráfico de ventas por mes (desde caché con Supabase)...")
+                cached_data['datos_ventas_mes_filtros'] = generar_datos_ventas_mes(año_sel_int, data_source, fecha_actual)
+                print(f"🔍 DEBUG CACHÉ: datos_ventas_mes_filtros tiene {len(cached_data['datos_ventas_mes_filtros'].get('registros', []))} registros")
+            else:
+                print("⏭️  Gráfico de productos omitido en caché (Odoo es muy lento)")
+                cached_data['datos_ventas_mes_filtros'] = {
+                    'datos': [],
+                    'filtros': {
+                        'lineas_comerciales': [],
+                        'categorias': [],
+                        'ciclos_vida': [],
+                        'vias_administracion': [],
+                        'clasificaciones': [],
+                        'formas_farmaceuticas': [],
+                        'lineas_produccion': []
+                    }
+                }
             
             return render_template('dashboard_clean.html', **cached_data)
 
@@ -2830,8 +2846,29 @@ def dashboard():
         # --- FIN: LÓGICA PARA LA TABLA DEL EQUIPO ECOMMERCE ---
 
         # --- INICIO: GRÁFICO DE VENTAS POR MES CON FILTROS ---
+        # Optimización Render Free: Solo generar para datos históricos en Supabase (rápido)
+        # Para año actual con Odoo (lento), omitir en primera carga para evitar timeout
         año_para_grafico = año_seleccionado
-        datos_ventas_mes_filtros = generar_datos_ventas_mes(año_para_grafico, data_source, fecha_actual)
+        
+        if data_source == 'supabase':
+            # Año histórico en Supabase: rápido, generar gráfico
+            print(f"📊 Generando gráfico de productos filtrados para año {año_para_grafico} (Supabase)")
+            datos_ventas_mes_filtros = generar_datos_ventas_mes(año_para_grafico, data_source, fecha_actual)
+        else:
+            # Año actual con Odoo: muy lento (>5 min), omitir para evitar timeout
+            print(f"⏭️  Gráfico de productos omitido para año {año_para_grafico} (Odoo es muy lento en Render Free)")
+            datos_ventas_mes_filtros = {
+                'datos': [],
+                'filtros': {
+                    'lineas_comerciales': [],
+                    'categorias': [],
+                    'ciclos_vida': [],
+                    'vias_administracion': [],
+                    'clasificaciones': [],
+                    'formas_farmaceuticas': [],
+                    'lineas_produccion': []
+                }
+            }
         # --- FIN: GRÁFICO DE VENTAS POR MES CON FILTROS ---
 
         # Ordenar los datos de la tabla: primero las filas TODOS, luego DIGITAL, luego NACIONAL
