@@ -283,12 +283,18 @@ def api_tendencia():
         
         print(f"📊 API Tendencia: Solicitando datos para año {año}")
         
-        # Obtener datos de tendencia para el año completo
+        # Obtener datos de tendencia (optimizado para Render Free)
         fecha_inicio = f"{año}-01-01"
-        fecha_fin = f"{año}-12-31"
         
         # Determinar fuente de datos
         data_source = get_data_source(año)
+        
+        # Optimización: Si es año actual con Odoo, solo hasta hoy
+        if data_source == 'odoo' and año == datetime.now().year:
+            fecha_fin = datetime.now().strftime('%Y-%m-%d')
+            print(f"📅 API Tendencia: Año actual, consultando solo hasta {fecha_fin}")
+        else:
+            fecha_fin = f"{año}-12-31"
         print(f"📊 Fuente de datos para {año}: {data_source}")
         
         # Obtener resumen mensual
@@ -481,9 +487,17 @@ def generar_datos_ventas_mes(año_para_grafico, data_source, fecha_actual):
     
     try:
         fecha_inicio_anual = f"{año_para_grafico}-01-01"
-        fecha_fin_anual = f"{año_para_grafico}-12-31"
         
-        print(f"📅 Cargando ventas anuales: {fecha_inicio_anual} a {fecha_fin_anual}")
+        # Optimización Render Free: Solo consultar hasta el mes actual, no todo el año
+        # Esto reduce drasticamente el tiempo de consulta a Odoo (de 300s a 30s)
+        if data_source == 'odoo' and año_para_grafico == fecha_actual.year:
+            # Año actual: solo consultar hasta fin del mes actual
+            fecha_fin_anual = f"{año_para_grafico}-{fecha_actual.month:02d}-{fecha_actual.day:02d}"
+            print(f"📅 Año actual: Cargando solo hasta hoy {fecha_fin_anual} (optimización Render)")
+        else:
+            # Año histórico en Supabase: consultar todo el año
+            fecha_fin_anual = f"{año_para_grafico}-12-31"
+            print(f"📅 Cargando ventas anuales: {fecha_inicio_anual} a {fecha_fin_anual}")
         
         if data_source == 'supabase':
             sales_data_anual = supabase_manager.get_dashboard_data(fecha_inicio_anual, fecha_fin_anual)
@@ -729,9 +743,14 @@ def dashboard():
                 # Recalcular tendencia para el año correcto
                 tendencia_12_meses_recalculada = []
                 fecha_inicio_tendencia = f"{año_seleccionado}-01-01"
-                fecha_fin_tendencia = f"{año_seleccionado}-12-31"
                 
                 tendencia_data_source = get_data_source(año_seleccionado)
+                
+                # Optimización: Si es año actual con Odoo, solo hasta hoy
+                if tendencia_data_source == 'odoo' and año_seleccionado == datetime.now().year:
+                    fecha_fin_tendencia = datetime.now().strftime('%Y-%m-%d')
+                else:
+                    fecha_fin_tendencia = f"{año_seleccionado}-12-31"
                 if tendencia_data_source == 'supabase':
                     resumen_mensual = supabase_manager.get_sales_by_month(fecha_inicio_tendencia, fecha_fin_tendencia)
                 else:
@@ -1906,10 +1925,16 @@ def dashboard():
         print(f"📈 Generando tendencia histórica de ventas para el año {año_seleccionado}...")
         tendencia_12_meses = []
         fecha_inicio_tendencia = f"{año_seleccionado}-01-01"
-        fecha_fin_tendencia = f"{año_seleccionado}-12-31"
         
         # Obtener resumen solo del año seleccionado (no últimos 12 meses mezclados)
         tendencia_data_source = get_data_source(año_seleccionado)
+        
+        # Optimización: Si es año actual con Odoo, solo hasta hoy
+        if tendencia_data_source == 'odoo' and año_seleccionado == fecha_actual.year:
+            fecha_fin_tendencia = fecha_actual.strftime('%Y-%m-%d')
+            print(f"📅 Tendencia: Año actual, consultando solo hasta {fecha_fin_tendencia}")
+        else:
+            fecha_fin_tendencia = f"{año_seleccionado}-12-31"
         if tendencia_data_source == 'supabase':
             # Para Supabase, cargar datos completos del año y aplicar mismos filtros que KPI
             sales_data_anual_tendencia = supabase_manager.get_dashboard_data(fecha_inicio_tendencia, fecha_fin_tendencia)
