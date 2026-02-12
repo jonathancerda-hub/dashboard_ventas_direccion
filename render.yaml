@@ -6,10 +6,12 @@ services:
     plan: free
     branch: main
     buildCommand: pip install -r requirements.txt
-    startCommand: gunicorn app:app --workers 1 --threads 2 --timeout 120 --keep-alive 5 --max-requests 100 --max-requests-jitter 10
+    startCommand: gunicorn app:app --workers 1 --threads 2 --timeout 300 --keep-alive 5 --max-requests 100 --max-requests-jitter 10 --worker-tmp-dir /dev/shm
     envVars:
       - key: PYTHON_VERSION
         value: 3.11.0
+      - key: ENABLE_SUPABASE_CACHE
+        value: false
       - key: SECRET_KEY
         sync: false
       - key: ADMIN_USERS

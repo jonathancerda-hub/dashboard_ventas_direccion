@@ -24,11 +24,17 @@ class SupabaseManager:
         self.supabase: Client = create_client(supabase_url, supabase_key)
         self._year_cache = {}  # Cache para años disponibles
         
-        # Caché de datos para evitar cargar 31K+ registros múltiples veces
-        self._all_data_cache = {}  # {table_name: [all records]}
-        self._cache_loaded = {}  # {table_name: bool}
+        # Modo de caché: False en producción (Render), True en desarrollo local
+        # Render Free Tier tiene solo 512 MB RAM, no puede cachear 31K registros
+        self.enable_cache = os.getenv('ENABLE_SUPABASE_CACHE', 'false').lower() == 'true'
         
-        print("✅ Conexión a Supabase establecida")
+        if self.enable_cache:
+            # Caché de datos para evitar cargar 31K+ registros múltiples veces
+            self._all_data_cache = {}  # {table_name: [all records]}
+            self._cache_loaded = {}  # {table_name: bool}
+            print("✅ Conexión a Supabase establecida (CACHÉ HABILITADO)")
+        else:
+            print("✅ Conexión a Supabase establecida (modo bajo consumo RAM)")
     
     def _get_table_for_year(self, año: int) -> str:
         """Determina qué tabla usar según el año"""
@@ -39,13 +45,10 @@ class SupabaseManager:
     def get_sales_data(self, fecha_inicio: str, fecha_fin: str) -> List[Dict]:
         """
         Obtiene líneas de venta de Supabase para un rango de fechas
-        Incluye paginación para obtener todos los registros
         
-        IMPORTANTE: Debido a un bug de Supabase/PostgREST, los filtros .gte() y .lte() 
-        en invoice_date devuelven valores incorrectos de price_subtotal.
-        
-        SOLUCIÓN: Obtiene TODOS los registros de la tabla una vez (con caché),
-        y luego filtra por fechas en Python.
+        Dos modos de operación:
+        1. CON CACHÉ (enable_cache=True): Carga todo y filtra en Python (preciso pero usa mucha RAM)
+        2. SIN CACHÉ (enable_cache=False): Query directo con filtros (bajo consumo RAM, Render Free compatible)
         
         Args:
             fecha_inicio: Fecha inicial en formato 'YYYY-MM-DD'
@@ -55,47 +58,70 @@ class SupabaseManager:
             Lista de diccionarios con las líneas de venta filtradas por fecha
         """
         try:
-            # Determinar tabla según el año
             año = int(fecha_inicio[:4])
             table_name = self._get_table_for_year(año)
             
-            # Verificar si los datos ya están en caché
-            if not self._cache_loaded.get(table_name, False):
-                print(f"📥 Cargando TODOS los registros de {table_name} en caché...")
-                all_data = []
+            if self.enable_cache:
+                # MODO CACHÉ: Para desarrollo local con RAM suficiente
+                if not self._cache_loaded.get(table_name, False):
+                    print(f"📥 Cargando TODOS los registros de {table_name} en caché...")
+                    all_data = []
+                    page_size = 1000
+                    offset = 0
+                    
+                    while True:
+                        result = self.supabase.table(table_name)\
+                            .select('*')\
+                            .range(offset, offset + page_size - 1)\
+                            .execute()
+                        
+                        if not result.data:
+                            break
+                        
+                        all_data.extend(result.data)
+                        
+                        if len(result.data) < page_size:
+                            break
+                        
+                        offset += page_size
+                    
+                    self._all_data_cache[table_name] = all_data
+                    self._cache_loaded[table_name] = True
+                    print(f"✅ Caché cargado: {len(all_data)} registros")
+                else:
+                    all_data = self._all_data_cache[table_name]
+                    print(f"⚡ Usando caché: {len(all_data)} registros")
+                
+                # Filtrar por fechas en Python
+                filtered_data = [
+                    record for record in all_data
+                    if record.get('invoice_date') and 
+                       fecha_inicio <= record.get('invoice_date') <= fecha_fin
+                ]
+            else:
+                # MODO SIN CACHÉ: Query directo con filtros (para Render Free Tier)
+                print(f"🔍 Consultando {table_name} con filtros: {fecha_inicio} a {fecha_fin}")
+                filtered_data = []
                 page_size = 1000
                 offset = 0
                 
                 while True:
                     result = self.supabase.table(table_name)\
                         .select('*')\
+                        .gte('invoice_date', fecha_inicio)\
+                        .lte('invoice_date', fecha_fin)\
                         .range(offset, offset + page_size - 1)\
                         .execute()
                     
                     if not result.data:
                         break
                     
-                    all_data.extend(result.data)
+                    filtered_data.extend(result.data)
                     
                     if len(result.data) < page_size:
                         break
                     
                     offset += page_size
-                
-                # Guardar en caché
-                self._all_data_cache[table_name] = all_data
-                self._cache_loaded[table_name] = True
-                print(f"✅ Caché cargado: {len(all_data)} registros de {table_name}")
-            else:
-                all_data = self._all_data_cache[table_name]
-                print(f"⚡ Usando caché: {len(all_data)} registros de {table_name}")
-            
-            # Filtrar por fechas en Python (lado cliente)
-            filtered_data = [
-                record for record in all_data
-                if record.get('invoice_date') and 
-                   fecha_inicio <= record.get('invoice_date') <= fecha_fin
-            ]
             
             print(f"📊 Supabase: {len(filtered_data)} registros para {fecha_inicio} a {fecha_fin}")
             return filtered_data
