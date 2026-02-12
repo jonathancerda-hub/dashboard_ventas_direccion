@@ -2830,9 +2830,28 @@ def dashboard():
         # --- FIN: LÓGICA PARA LA TABLA DEL EQUIPO ECOMMERCE ---
 
         # --- INICIO: GRÁFICO DE VENTAS POR MES CON FILTROS ---
+        # Optimización Render Free: Solo generar para años históricos (Supabase)
+        # Para año actual (Odoo), omitir para evitar consulta adicional lenta
         año_para_grafico = año_seleccionado
         
-        datos_ventas_mes_filtros = generar_datos_ventas_mes(año_para_grafico, data_source, fecha_actual)
+        if data_source == 'supabase':
+            # Año histórico: Supabase es rápido, generar gráfico
+            datos_ventas_mes_filtros = generar_datos_ventas_mes(año_para_grafico, data_source, fecha_actual)
+        else:
+            # Año actual con Odoo: Omitir para evitar timeout (ya cargamos datos 2 veces)
+            print(f"⏭️  Gráfico de productos omitido para optimizar carga (Render Free Tier)")
+            datos_ventas_mes_filtros = {
+                'datos': [],
+                'filtros': {
+                    'lineas_comerciales': [],
+                    'categorias': [],
+                    'ciclos_vida': [],
+                    'vias_administracion': [],
+                    'clasificaciones': [],
+                    'formas_farmaceuticas': [],
+                    'lineas_produccion': []
+                }
+            }
         # --- FIN: GRÁFICO DE VENTAS POR MES CON FILTROS ---
 
         # Ordenar los datos de la tabla: primero las filas TODOS, luego DIGITAL, luego NACIONAL
