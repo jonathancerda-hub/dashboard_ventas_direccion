@@ -1952,53 +1952,8 @@ def dashboard():
         else:
             fecha_fin_tendencia = f"{año_seleccionado}-12-31"
         if tendencia_data_source == 'supabase':
-            # Para Supabase, cargar datos completos del año y aplicar mismos filtros que KPI
-            sales_data_anual_tendencia = supabase_manager.get_dashboard_data(fecha_inicio_tendencia, fecha_fin_tendencia)
-            
-            # Generar resumen mensual con los MISMOS filtros que el KPI Venta
-            resumen_mensual = {}
-            meses_es = {
-                1: 'enero', 2: 'febrero', 3: 'marzo', 4: 'abril', 5: 'mayo', 6: 'junio',
-                7: 'julio', 8: 'agosto', 9: 'septiembre', 10: 'octubre', 11: 'noviembre', 12: 'diciembre'
-            }
-            
-            for sale in sales_data_anual_tendencia:
-                invoice_date = sale.get('invoice_date')
-                if not invoice_date:
-                    continue
-                
-                # Extraer año y mes
-                if isinstance(invoice_date, str):
-                    año_venta = int(invoice_date[:4])
-                    mes_venta = int(invoice_date[5:7])
-                else:
-                    año_venta = invoice_date.year
-                    mes_venta = invoice_date.month
-                
-                if año_venta != año_seleccionado:
-                    continue
-                
-                # Aplicar MISMOS filtros que el KPI Venta
-                linea_comercial = sale.get('commercial_line_name', '')
-                
-                # Filtrar VENTA INTERNACIONAL
-                if linea_comercial and 'VENTA INTERNACIONAL' in str(linea_comercial).upper():
-                    continue
-                
-                # Filtrar ventas sin línea comercial
-                if not linea_comercial or linea_comercial in ['Sin Línea', 'NINGUNO', '']:
-                    continue
-                
-                balance = float(sale.get('balance') or sale.get('price_subtotal', 0))
-                
-                # Filtrar ventas negativas o cero
-                if balance <= 0:
-                    continue
-                
-                mes_key = f"{meses_es[mes_venta]} {año_venta}"
-                resumen_mensual[mes_key] = resumen_mensual.get(mes_key, 0) + balance
-            
-            print(f"✅ Resumen mensual generado para Supabase: {len(resumen_mensual)} meses")
+            # Para Supabase, usar la misma función que el KPI de ventas (ya tiene filtros correctos)
+            resumen_mensual = supabase_manager.get_sales_by_month(fecha_inicio_tendencia, fecha_fin_tendencia)
         else:
             resumen_mensual = data_manager.get_sales_summary_by_month(fecha_inicio_tendencia, fecha_fin_tendencia)
         
