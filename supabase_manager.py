@@ -24,9 +24,9 @@ class SupabaseManager:
         self.supabase: Client = create_client(supabase_url, supabase_key)
         self._year_cache = {}  # Cache para años disponibles
         
-        # Caché habilitado por defecto para mejor performance
-        # Deshabilitarlo solo si hay problemas de RAM (configurar ENABLE_SUPABASE_CACHE=false)
-        self.enable_cache = os.getenv('ENABLE_SUPABASE_CACHE', 'true').lower() == 'true'
+        # Caché: Deshabilitar en Render Free (red lenta), habilitar en local
+        # Render Free Tier tiene red 0.1 CPU compartida, cargar 31K registros = timeout
+        self.enable_cache = os.getenv('ENABLE_SUPABASE_CACHE', 'false').lower() == 'true'
         
         if self.enable_cache:
             # Caché de datos para evitar cargar 31K+ registros múltiples veces

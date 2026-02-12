@@ -824,14 +824,11 @@ def dashboard():
                     print(f"⚠️ Error obteniendo grupos de venta: {e}")
                 cached_data['grupos_venta'] = grupos_venta
             
-            # Gráfico de productos: solo regenerar si es Supabase (rápido)
-            # Para Odoo (lento), usar estructura vacía
-            if data_source == 'supabase':
-                print("📊 Generando gráfico de ventas por mes (desde caché con Supabase)...")
-                cached_data['datos_ventas_mes_filtros'] = generar_datos_ventas_mes(año_sel_int, data_source, fecha_actual)
-                print(f"🔍 DEBUG CACHÉ: datos_ventas_mes_filtros tiene {len(cached_data['datos_ventas_mes_filtros'].get('registros', []))} registros")
-            else:
-                print("⏭️  Gráfico de productos omitido en caché (Odoo es muy lento)")
+            # Gráfico de productos: omitir en Render Free (red lenta)
+            is_render = os.getenv('RENDER', 'false').lower() == 'true'
+            
+            if is_render:
+                print("⏭️  Gráfico de productos omitido en caché (Render Free Tier)")
                 cached_data['datos_ventas_mes_filtros'] = {
                     'datos': [],
                     'filtros': {
@@ -844,6 +841,9 @@ def dashboard():
                         'lineas_produccion': []
                     }
                 }
+            else:
+                print(f"📊 Regenerando gráfico de productos desde caché ({data_source})...")
+                cached_data['datos_ventas_mes_filtros'] = generar_datos_ventas_mes(año_sel_int, data_source, fecha_actual)
             
             return render_template('dashboard_clean.html', **cached_data)
 
@@ -2846,17 +2846,17 @@ def dashboard():
         # --- FIN: LÓGICA PARA LA TABLA DEL EQUIPO ECOMMERCE ---
 
         # --- INICIO: GRÁFICO DE VENTAS POR MES CON FILTROS ---
-        # Optimización Render Free: Solo generar para datos históricos en Supabase (rápido)
-        # Para año actual con Odoo (lento), omitir en primera carga para evitar timeout
-        año_para_grafico = año_seleccionado
+        # Render Free: red ultra-lenta (0.1 CPU) hace IMPOSIBLE transferir 31K registros
+        # - Odoo: >5 min para 4K registros (XML-RPC lento)
+        # - Supabase: >5 min para 31K registros (32 requests HTTP de 1K c/u)
+        # SOLUCIÓN: Deshabilitar en producción, habilitar solo en desarrollo local
         
-        if data_source == 'supabase':
-            # Año histórico en Supabase: rápido, generar gráfico
-            print(f"📊 Generando gráfico de productos filtrados para año {año_para_grafico} (Supabase)")
-            datos_ventas_mes_filtros = generar_datos_ventas_mes(año_para_grafico, data_source, fecha_actual)
-        else:
-            # Año actual con Odoo: muy lento (>5 min), omitir para evitar timeout
-            print(f"⏭️  Gráfico de productos omitido para año {año_para_grafico} (Odoo es muy lento en Render Free)")
+        is_render = os.getenv('RENDER', 'false').lower() == 'true'
+        
+        if is_render:
+            # Render Free: Omitir siempre (red demasiado lenta)
+            print(f"⏭️  Gráfico de productos DESHABILITADO en Render Free Tier")
+            print(f"    Motivo: Transferir {31982 if data_source == 'supabase' else '4K+'} registros sobre red 0.1 CPU = timeout")
             datos_ventas_mes_filtros = {
                 'datos': [],
                 'filtros': {
@@ -2869,6 +2869,10 @@ def dashboard():
                     'lineas_produccion': []
                 }
             }
+        else:
+            # Desarrollo local: Red rápida, generar normalmente
+            print(f"📊 Generando gráfico de productos filtrados para año {año_seleccionado} ({data_source})")
+            datos_ventas_mes_filtros = generar_datos_ventas_mes(año_seleccionado, data_source, fecha_actual)
         # --- FIN: GRÁFICO DE VENTAS POR MES CON FILTROS ---
 
         # Ordenar los datos de la tabla: primero las filas TODOS, luego DIGITAL, luego NACIONAL
