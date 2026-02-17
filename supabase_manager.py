@@ -574,3 +574,75 @@ class SupabaseManager:
         except Exception as e:
             print(f"⚠️ Error contando clientes únicos: {e}")
             return 0
+    
+    def read_metas_from_supabase(self, año: int = None) -> Dict:
+        """
+        Lee las metas desde Supabase tabla metas_ventas_2026
+        
+        Args:
+            año: Año para filtrar las metas (opcional). Si no se proporciona, devuelve todas las metas.
+        
+        Returns:
+            Dict con formato: {
+                '2026-01': {
+                    'metas': {'agrovet': 1300000.0, 'petmedica': 1300000.0, ...},
+                    'metas_ipn': {'agrovet': 760000.0, 'petmedica': 400000.0, ...},
+                    'total': 3014000.0,
+                    'total_ipn': 1839089.0
+                },
+                ...
+            }
+        """
+        try:
+            # Consultar todas las metas desde Supabase
+            query = self.supabase.table('metas_ventas_2026').select('*')
+            
+            # Si se especifica un año, filtrar por ese año
+            if año:
+                query = query.gte('mes', f'{año}-01').lte('mes', f'{año}-12')
+            
+            result = query.execute()
+            
+            if not result.data:
+                print(f"⚠️ No se encontraron metas en Supabase para año {año}")
+                return {}
+            
+            # Estructurar datos en el formato esperado
+            metas_por_linea = {}
+            
+            for record in result.data:
+                mes_key = record.get('mes')  # '2026-01'
+                linea = record.get('linea_comercial', '').lower()  # 'AGROVET' -> 'agrovet'
+                meta_total = float(record.get('meta_total', 0) or 0)
+                meta_ipn = float(record.get('meta_ipn', 0) or 0)
+                
+                if not mes_key or not linea:
+                    continue
+                
+                # Inicializar el mes si no existe
+                if mes_key not in metas_por_linea:
+                    metas_por_linea[mes_key] = {
+                        'metas': {},
+                        'metas_ipn': {},
+                        'total': 0.0,
+                        'total_ipn': 0.0
+                    }
+                
+                # Agregar meta total
+                metas_por_linea[mes_key]['metas'][linea] = meta_total
+                
+                # Agregar meta IPN
+                if meta_ipn > 0:
+                    metas_por_linea[mes_key]['metas_ipn'][linea] = meta_ipn
+            
+            # Calcular totales
+            for mes_key in metas_por_linea:
+                metas_por_linea[mes_key]['total'] = sum(metas_por_linea[mes_key]['metas'].values())
+                metas_por_linea[mes_key]['total_ipn'] = sum(metas_por_linea[mes_key]['metas_ipn'].values())
+            
+            print(f"✅ Metas cargadas desde Supabase: {len(metas_por_linea)} meses")
+            return metas_por_linea
+            
+        except Exception as e:
+            print(f"⚠️ Error al leer metas desde Supabase: {e}")
+            return {}

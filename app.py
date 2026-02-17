@@ -163,6 +163,32 @@ def get_data_source(año: int):
     print(f"🔄 Usando Odoo para año {año}")
     return 'odoo'
 
+def load_metas(año: int):
+    """
+    Carga las metas desde la fuente correcta según el año
+    
+    Args:
+        año: Año para cargar las metas
+    
+    Returns:
+        Dict con formato: {
+            'mes_key': {
+                'metas': {'linea': valor, ...},
+                'metas_ipn': {'linea': valor, ...},
+                'total': float,
+                'total_ipn': float
+            }
+        }
+    """
+    # Para 2026 y posteriores, usar Supabase
+    if año >= 2026 and SUPABASE_ENABLED:
+        print(f"📊 Cargando metas del {año} desde Supabase...")
+        return supabase_manager.read_metas_from_supabase(año=año)
+    
+    # Para años anteriores, usar Google Sheets
+    print(f"📊 Cargando metas desde Google Sheets...")
+    return gs_manager.read_metas_por_linea()
+
 def normalizar_linea_comercial(nombre_linea):
     """
     Normaliza nombres de líneas comerciales agrupando GENVET y MARCA BLANCA como TERCEROS.
@@ -353,8 +379,8 @@ def api_tendencia():
         else:
             resumen_mensual = data_manager.get_sales_summary_by_month(fecha_inicio, fecha_fin)
         
-        # Obtener metas del año
-        metas_historicas = gs_manager.read_metas_por_linea()
+        # Obtener metas del año desde la fuente correcta (Google Sheets o Supabase)
+        metas_historicas = load_metas(año)
         
         # Construir array de 12 meses
         tendencia = []
@@ -756,8 +782,8 @@ def dashboard():
                 else:
                     resumen_mensual = data_manager.get_sales_summary_by_month(fecha_inicio_tendencia, fecha_fin_tendencia)
                 
-                # Obtener metas del año
-                metas_historicas = gs_manager.read_metas_por_linea()
+                # Obtener metas del año desde la fuente correcta (Google Sheets o Supabase)
+                metas_historicas = load_metas(año_seleccionado)
                 
                 meses_es = {
                     1: 'enero', 2: 'febrero', 3: 'marzo', 4: 'abril', 5: 'mayo', 6: 'junio',
@@ -910,8 +936,8 @@ def dashboard():
         else:
             print(f"🔄 Obteniendo datos del {año_sel_int} desde Odoo...")
 
-        # Obtener metas del mes seleccionado desde la sesión
-        metas_historicas = gs_manager.read_metas_por_linea()
+        # Obtener metas del mes seleccionado desde la fuente correcta (Google Sheets o Supabase)
+        metas_historicas = load_metas(año_sel_int)
         metas_del_mes_raw = metas_historicas.get(mes_seleccionado, {}).get('metas', {})
         metas_ipn_del_mes_raw = metas_historicas.get(mes_seleccionado, {}).get('metas_ipn', {})
         
@@ -3287,7 +3313,8 @@ def dashboard_linea():
         # Replicar la misma lógica del dashboard principal para consistencia.
         
         # 1. Obtener metas del mes para incluir líneas con metas pero sin ventas.
-        metas_historicas = gs_manager.read_metas_por_linea()
+        año_sel_int = int(año_sel)
+        metas_historicas = load_metas(año_sel_int)
         metas_del_mes = metas_historicas.get(mes_seleccionado, {}).get('metas', {})
         
         # 2. Unificar líneas desde ventas y metas.
