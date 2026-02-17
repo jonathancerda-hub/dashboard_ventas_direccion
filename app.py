@@ -193,12 +193,12 @@ def load_metas(año: int):
             }
         }
     """
-    # Para 2026 y posteriores, usar Supabase
-    if año >= 2026 and SUPABASE_ENABLED:
+    # Para 2025 y posteriores, usar Supabase (tabla metas_ventas_2026 contiene 2025 y 2026)
+    if año >= 2025 and SUPABASE_ENABLED:
         print(f"📊 Cargando metas del {año} desde Supabase...")
         return supabase_manager.read_metas_from_supabase(año=año)
     
-    # Para años anteriores, usar Google Sheets
+    # Para años anteriores a 2025, usar Google Sheets
     print(f"📊 Cargando metas desde Google Sheets...")
     return gs_manager.read_metas_por_linea()
 
