@@ -5,7 +5,7 @@ services:
     region: oregon
     plan: free
     branch: main
-    buildCommand: pip install -r requirements.txt
+    buildCommand: pip install -r requirements.txt && python precompile_templates.py
     startCommand: gunicorn app:app --workers 1 --threads 2 --timeout 600 --keep-alive 5 --max-requests 100 --max-requests-jitter 10
     envVars:
       - key: PYTHON_VERSION
