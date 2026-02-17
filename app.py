@@ -40,10 +40,23 @@ if not app.secret_key:
 ADMIN_USERS = os.getenv("ADMIN_USERS", "").split(",")
 ADMIN_USERS = [email.strip() for email in ADMIN_USERS if email.strip()]
 
-# Configuración para deshabilitar cache de templates
-app.config['TEMPLATES_AUTO_RELOAD'] = True
-app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
+# --- Configuración de Templates ---
+# En producción (Render): habilitar caché de templates para evitar timeouts
+# En desarrollo: deshabilitar caché para ver cambios inmediatos
+IS_RENDER = os.getenv('RENDER', 'false').lower() == 'true'
+if IS_RENDER:
+    app.config['TEMPLATES_AUTO_RELOAD'] = False  # Habilitar caché en producción
+    # Habilitar bytecode cache de Jinja2 para compilación rápida
+    from jinja2 import FileSystemBytecodeCache
+    bytecode_cache_dir = os.path.join(os.path.dirname(__file__), '__pycache__', 'jinja2_cache')
+    os.makedirs(bytecode_cache_dir, exist_ok=True)
+    app.jinja_env.bytecode_cache = FileSystemBytecodeCache(bytecode_cache_dir)
+    print("✅ Caché de templates Jinja2 habilitado (producción)")
+else:
+    app.config['TEMPLATES_AUTO_RELOAD'] = True  # Recargar templates en desarrollo
+    print("💻 Auto-reload de templates habilitado (desarrollo)")
 
+app.config['SEND_FILE_MAX_AGE_DEFAULT'] = 0
 
 # --- Sistema de Caché para Datos de Meses ---
 CACHE_DIR = os.path.join(os.path.dirname(__file__), '__pycache__', 'dashboard_cache')
