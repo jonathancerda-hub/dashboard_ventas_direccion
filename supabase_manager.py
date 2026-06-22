@@ -324,54 +324,54 @@ class SupabaseManager:
         Returns:
             Diccionario con mes como clave ('enero 2025') y total de ventas como valor
         """
-        print("🔥🔥🔥 USANDO CÓDIGO NUEVO - VERSIÓN CON INVOICE_DATE 🔥🔥🔥")
         try:
             resumen = {}
             meses_es = {
                 1: 'enero', 2: 'febrero', 3: 'marzo', 4: 'abril', 5: 'mayo', 6: 'junio',
                 7: 'julio', 8: 'agosto', 9: 'septiembre', 10: 'octubre', 11: 'noviembre', 12: 'diciembre'
             }
-            
+
             # Determinar tabla según el año
             año = int(fecha_inicio[:4])
             table_name = self._get_table_for_year(año)
-            
+
             print(f"🔍 get_sales_by_month: Consultando {fecha_inicio} a {fecha_fin} en tabla {table_name}")
-            
-            # WORKAROUND BUG SUPABASE: Consultar TODO el año sin filtro de fechas
-            # y filtrar manualmente en Python para evitar pérdida de datos con paginación
-            all_data = self._get_all_sales_for_year(año)
-            
-            # Filtrar por rango de fechas en Python
-            filtered_data = [
-                row for row in all_data
-                if row.get('invoice_date') and 
-                   fecha_inicio <= row.get('invoice_date') <= fecha_fin
-            ]
-            print(f"🔍 Filtrado en Python: {len(filtered_data)} de {len(all_data)} registros en rango {fecha_inicio} a {fecha_fin}")
-            
-            # Sumar TODOS los registros sin deduplicar (los datos ya vienen correctos de Odoo)
+
+            # MEMORIA: leer SOLO las 3 columnas necesarias y procesar página por página.
+            # Antes se hacía select('*') de todo el año (61 cols x miles de filas) -> OOM
+            # en Render Free (512MB). Aquí no acumulamos todas las filas en memoria.
+            # Se mantiene el workaround del bug de Supabase: paginar sin filtro de fechas
+            # y filtrar el rango en Python.
+            page_size = 1000
+            offset = 0
             total_registros = 0
-            
-            for row in filtered_data:
-                invoice_date = row.get('invoice_date', '')
-                # Usar balance si está disponible (igual que el KPI Venta), sino price_subtotal
-                balance = float(row.get('balance') or row.get('price_subtotal', 0))
-                
-                if not invoice_date or len(invoice_date) < 7:
-                    continue
-                
-                # Extraer año y mes de invoice_date
-                año = int(invoice_date[:4])
-                mes = int(invoice_date[5:7])
-                
-                mes_nombre = f"{meses_es.get(mes, mes)} {año}"
-                resumen[mes_nombre] = resumen.get(mes_nombre, 0) + balance
-                total_registros += 1
-            
-            print(f"📊 Resumen mensual Supabase: {total_registros} registros sumados")
-            print(f"   {len(resumen)} meses con datos")
-            print(f"   Total general: S/ {sum(resumen.values()):,.2f}")
+            while True:
+                result = self.supabase.table(table_name)\
+                    .select('invoice_date, balance, price_subtotal')\
+                    .range(offset, offset + page_size - 1)\
+                    .execute()
+                if not result.data:
+                    break
+
+                for row in result.data:
+                    invoice_date = row.get('invoice_date') or ''
+                    if len(invoice_date) < 7:
+                        continue
+                    if not (fecha_inicio <= invoice_date <= fecha_fin):
+                        continue
+                    # Usar balance si está disponible (igual que el KPI Venta), sino price_subtotal
+                    balance = float(row.get('balance') or row.get('price_subtotal') or 0)
+                    a = int(invoice_date[:4])
+                    m = int(invoice_date[5:7])
+                    mes_nombre = f"{meses_es.get(m, m)} {a}"
+                    resumen[mes_nombre] = resumen.get(mes_nombre, 0) + balance
+                    total_registros += 1
+
+                if len(result.data) < page_size:
+                    break
+                offset += page_size
+
+            print(f"📊 Resumen mensual Supabase: {total_registros} registros sumados, {len(resumen)} meses")
             return resumen
             
         except Exception as e:
