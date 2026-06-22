@@ -352,46 +352,50 @@ class OdooManager:
                 date_from_12m = date_from
                 date_to_12m = date_to
             
-            print(f"📊 Obteniendo resumen mensual: {date_from_12m} hasta {date_to_12m}...")
-            
-            # Usar get_sales_lines para obtener datos con filtros consistentes
-            sales_lines = self.get_sales_lines(
-                date_from=date_from_12m,
-                date_to=date_to_12m,
-                limit=None  # Sin límite para obtener todos los datos
+            print(f"📊 Obteniendo resumen mensual (read_group): {date_from_12m} hasta {date_to_12m}...")
+
+            # Usar read_group en account.move directamente en lugar de account.move.line
+            domain = [
+                ('move_type', 'in', ['out_invoice', 'out_refund']),
+                ('state', '=', 'posted'),
+                ('invoice_date', '>=', date_from_12m),
+                ('invoice_date', '<=', date_to_12m),
+                ('line_ids.product_id.default_code', '!=', False),
+                ('line_ids.product_id.commercial_line_national_id', '!=', False),
+            ]
+
+            grouped = self.models.execute_kw(
+                self.db, self.uid, self.password,
+                'account.move', 'read_group',
+                [domain],
+                {
+                    'fields': ['amount_total:sum', 'invoice_date:month'],
+                    'groupby': ['invoice_date:month'],
+                    'lazy': False,
+                    'orderby': 'invoice_date:month asc'
+                }
             )
-            
-            print(f"🔍 get_sales_lines devolvió {len(sales_lines)} líneas para agrupar")
-            
-            # Agrupar por mes
-            from collections import defaultdict
-            
-            monthly_totals = defaultdict(float)
-            
-            for line in sales_lines:
-                date_str = line.get('invoice_date')  # Cambiar de 'date' a 'invoice_date'
-                balance = line.get('balance', 0)
-                
-                if date_str:
-                    try:
-                        # Parsear la fecha
-                        date_obj = datetime.strptime(date_str, '%Y-%m-%d')
-                        
-                        # Formatear como "mes año" en español (ej: "diciembre 2025")
-                        month_names = {
-                            1: 'enero', 2: 'febrero', 3: 'marzo', 4: 'abril',
-                            5: 'mayo', 6: 'junio', 7: 'julio', 8: 'agosto',
-                            9: 'septiembre', 10: 'octubre', 11: 'noviembre', 12: 'diciembre'
-                        }
-                        month_key = f"{month_names[date_obj.month]} {date_obj.year}"
-                        
-                        monthly_totals[month_key] += balance
-                    except (ValueError, KeyError) as e:
-                        print(f"⚠️ Error parseando fecha {date_str}: {e}")
-                        continue
-            
-            print(f"✅ Resumen mensual obtenido: {len(monthly_totals)} meses (últimos 12 meses)")
-            return dict(monthly_totals)
+
+            month_names = {
+                1: 'enero', 2: 'febrero', 3: 'marzo', 4: 'abril',
+                5: 'mayo', 6: 'junio', 7: 'julio', 8: 'agosto',
+                9: 'septiembre', 10: 'octubre', 11: 'noviembre', 12: 'diciembre'
+            }
+
+            monthly_totals = {}
+            for row in grouped:
+                date_month = row.get('invoice_date:month')
+                if not date_month:
+                    continue
+                try:
+                    date_obj = datetime.strptime(date_month[:10], '%Y-%m-%d')
+                    month_key = f"{month_names[date_obj.month]} {date_obj.year}"
+                    monthly_totals[month_key] = row.get('amount_total', 0) or 0
+                except Exception:
+                    continue
+
+            print(f"✅ Resumen mensual obtenido: {len(monthly_totals)} meses")
+            return monthly_totals
             
         except Exception as e:
             print(f"❌ Error obteniendo resumen mensual de Odoo: {e}")

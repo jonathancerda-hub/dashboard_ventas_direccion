@@ -1,5 +1,14 @@
 # app.py - Dashboard de Ventas Farmacéuticas
 
+# Usar el almacén de certificados del SO (Windows) para TLS. Necesario en local tras
+# proxies corporativos con inspección SSL (Google OAuth/Sheets fallan con certifi).
+# Inofensivo en Render (si truststore no está instalado, simplemente se omite).
+try:
+    import truststore
+    truststore.inject_into_ssl()
+except Exception:
+    pass
+
 from flask import Flask, render_template, request, redirect, url_for, flash, session, send_file, jsonify
 from dotenv import load_dotenv
 from odoo_manager import OdooManager
@@ -39,6 +48,53 @@ if not app.secret_key:
 # --- Lista de usuarios administradores ---
 ADMIN_USERS = os.getenv("ADMIN_USERS", "").split(",")
 ADMIN_USERS = [email.strip() for email in ADMIN_USERS if email.strip()]
+
+# --- Configuración Google OAuth (login con Google) ---
+GOOGLE_CLIENT_ID = os.getenv('GOOGLE_CLIENT_ID')
+GOOGLE_CLIENT_SECRET = os.getenv('GOOGLE_CLIENT_SECRET')
+GOOGLE_OAUTH_ENABLED = bool(GOOGLE_CLIENT_ID and GOOGLE_CLIENT_SECRET)
+# Google añade scopes ('email','profile') además de los pedidos -> evitar que oauthlib
+# lance "Scope has changed". Inofensivo en todos los entornos.
+os.environ.setdefault('OAUTHLIB_RELAX_TOKEN_SCOPE', '1')
+# En local el redirect es http://localhost (no https): oauthlib lo rechaza por defecto.
+# Solo permitir transporte inseguro fuera de Render (en producción es https).
+if os.getenv('RENDER', 'false').lower() != 'true':
+    os.environ.setdefault('OAUTHLIB_INSECURE_TRANSPORT', '1')
+OAUTH_SCOPES = [
+    'openid',
+    'https://www.googleapis.com/auth/userinfo.email',
+    'https://www.googleapis.com/auth/userinfo.profile',
+]
+if not GOOGLE_OAUTH_ENABLED:
+    print("⚠️  Google OAuth no configurado (faltan GOOGLE_CLIENT_ID / GOOGLE_CLIENT_SECRET en .env)")
+
+
+def get_allowed_emails():
+    """Lista blanca de correos autorizados (env ALLOWED_USERS o allowed_users.json)."""
+    allowed_emails_env = os.getenv('ALLOWED_USERS')
+    if allowed_emails_env:
+        return [e.strip() for e in allowed_emails_env.split(',') if e.strip()]
+    allowed_users_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'allowed_users.json')
+    with open(allowed_users_path, 'r') as f:
+        return json.load(f).get('allowed_emails', [])
+
+
+def _build_oauth_flow(state=None):
+    """Crea el Flow de OAuth de Google usando las credenciales del .env."""
+    from google_auth_oauthlib.flow import Flow
+    client_config = {
+        "web": {
+            "client_id": GOOGLE_CLIENT_ID,
+            "client_secret": GOOGLE_CLIENT_SECRET,
+            "auth_uri": "https://accounts.google.com/o/oauth2/auth",
+            "token_uri": "https://oauth2.googleapis.com/token",
+            "auth_provider_x509_cert_url": "https://www.googleapis.com/oauth2/v1/certs",
+        }
+    }
+    redirect_uri = url_for('oauth2callback', _external=True,
+                           _scheme='https' if IS_RENDER else 'http')
+    return Flow.from_client_config(client_config, scopes=OAUTH_SCOPES,
+                                   state=state, redirect_uri=redirect_uri)
 
 # --- Configuración de Templates ---
 # En producción (Render): habilitar caché de templates para evitar timeouts
@@ -156,15 +212,23 @@ def get_meses_del_año(año):
         meses_disponibles.append({'key': mes_key, 'nombre': mes_nombre})
     return meses_disponibles
 
-def get_data_source(año: int):
+def get_data_source(año: int, mes: int = None):
     """
-    Determina de dónde obtener los datos según el año
-    
+    Determina de dónde obtener los datos según el año (y opcionalmente el mes).
+
+    Reglas:
+    - Años históricos (≤2025): Supabase si hay datos.
+    - Año actual / futuro (2026+): el MES EN CURSO y meses futuros van a Odoo en vivo;
+      los meses CERRADOS ya migrados a Supabase (vía migrar_mes.py) se leen de Supabase.
+    - Si no se pasa `mes`, se mantiene el comportamiento por año (compatibilidad):
+      2026+ -> Odoo.
+
     Args:
         año: Año a consultar
-    
+        mes: Mes (1-12) opcional. Necesario para enrutar meses cerrados de 2026+.
+
     Returns:
-        'supabase' si el año está en Supabase, 'odoo' en caso contrario
+        'supabase' o 'odoo'
     """
     # Años históricos (2025 y anteriores) en Supabase
     if SUPABASE_ENABLED and año <= 2025:
@@ -172,8 +236,16 @@ def get_data_source(año: int):
         print(f"🔍 Verificando año {año} en Supabase: {'✅ Encontrado' if has_data else '❌ No encontrado'}")
         if has_data:
             return 'supabase'
-    
-    print(f"🔄 Usando Odoo para año {año}")
+
+    # Año actual/futuro con mes concreto: meses cerrados migrados -> Supabase
+    if SUPABASE_ENABLED and mes is not None and año >= 2026:
+        hoy = datetime.now()
+        es_mes_en_curso = (año > hoy.year) or (año == hoy.year and mes >= hoy.month)
+        if not es_mes_en_curso and supabase_manager.is_month_in_supabase(año, mes):
+            print(f"🔍 Mes cerrado {año}-{mes:02d} encontrado en Supabase ✅")
+            return 'supabase'
+
+    print(f"🔄 Usando Odoo para año {año}" + (f" mes {mes:02d}" if mes else ""))
     return 'odoo'
 
 def load_metas(año: int):
@@ -223,6 +295,13 @@ def normalizar_linea_comercial(nombre_linea):
     
     return nombre_linea.upper().strip()
 
+ATREVIA_TAMANOS_PRESENTACIONES_ORDENADOS = sorted([
+    'MEDIUM', 'LARGE', 'SMALL', 'MINI', 'EXTRA LARGE', 'XL', 'L', 'M', 'S',
+    'SPOT ON MEDIUM', 'SPOT ON LARGE', 'SPOT ON SMALL', 'SPOT ON MINI',
+    'CATS SPOT ON MEDIUM', 'CATS SPOT ON LARGE', 'CATS SPOT ON SMALL', 'CATS SPOT ON MINI',
+    'SPOT ON'
+], key=len, reverse=True)
+
 def limpiar_nombre_atrevia(nombre_producto):
     """
     Limpia los nombres de productos ATREVIA eliminando indicadores de tamaño/presentación.
@@ -236,22 +315,11 @@ def limpiar_nombre_atrevia(nombre_producto):
     if not nombre_producto or 'ATREVIA' not in nombre_producto.upper():
         return nombre_producto
     
-    # Lista de palabras que indican tamaño/presentación a eliminar
-    tamanos_presentaciones = [
-        'MEDIUM', 'LARGE', 'SMALL', 'MINI', 'EXTRA LARGE', 'XL', 'L', 'M', 'S', 
-        'SPOT ON MEDIUM', 'SPOT ON LARGE', 'SPOT ON SMALL', 'SPOT ON MINI',
-        'CATS SPOT ON MEDIUM', 'CATS SPOT ON LARGE', 'CATS SPOT ON SMALL', 'CATS SPOT ON MINI',
-        'SPOT ON'
-    ]
-    
     nombre_limpio = nombre_producto.strip()
     
     # Procesar solo si contiene ATREVIA
     if 'ATREVIA' in nombre_limpio.upper():
-        # Ordenar por longitud descendente para procesar primero las frases más largas
-        tamanos_ordenados = sorted(tamanos_presentaciones, key=len, reverse=True)
-        
-        for tamano in tamanos_ordenados:
+        for tamano in ATREVIA_TAMANOS_PRESENTACIONES_ORDENADOS:
             # Buscar y eliminar el tamaño/presentación al final del nombre
             if nombre_limpio.upper().endswith(' ' + tamano):
                 nombre_limpio = nombre_limpio[:-(len(tamano) + 1)].strip()
@@ -259,45 +327,99 @@ def limpiar_nombre_atrevia(nombre_producto):
     
     return nombre_limpio
 
-@app.route('/login', methods=['GET', 'POST'])
+def extraer_nombre_relacional(valor_relacional, default=''):
+    """Extrae el nombre de un campo relacional de Odoo con formato [id, nombre]."""
+    if isinstance(valor_relacional, list) and len(valor_relacional) > 1:
+        return valor_relacional[1]
+    return default
+
+@app.route('/login')
 def login():
-    if request.method == 'POST':
-        username = request.form.get('username')
-        password = request.form.get('password')
-        user_data = data_manager.authenticate_user(username, password)
-        
-        if user_data:
-            # --- Verificación de Lista Blanca ---
-            try:
-                # Intentar leer desde variable de entorno primero
-                allowed_emails_env = os.getenv('ALLOWED_USERS')
-                if allowed_emails_env:
-                    # Si existe la variable de entorno, parsear la lista separada por comas
-                    allowed_emails = [email.strip() for email in allowed_emails_env.split(',')]
-                else:
-                    # Fallback: leer desde el archivo JSON local
-                    allowed_users_path = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'allowed_users.json')
-                    with open(allowed_users_path, 'r') as f:
-                        allowed_emails = json.load(f).get('allowed_emails', [])
-                
-                user_login = user_data.get('login')
-                if user_login and user_login in allowed_emails:
-                    # Usuario autenticado y autorizado
-                    session['username'] = user_login
-                    session['user_name'] = user_data.get('name', username)
-                    flash('¡Inicio de sesión exitoso!', 'success')
-                    return redirect(url_for('dashboard'))
-                else:
-                    # Usuario autenticado pero no autorizado
-                    flash('No tienes permiso para acceder a esta aplicación.', 'warning')
-            except FileNotFoundError:
-                flash('Error de configuración: El archivo de usuarios permitidos no se encuentra.', 'danger')
-            except Exception as e:
-                flash(f'Error al verificar permisos: {str(e)}', 'danger')
+    # Si ya hay sesión, ir directo al dashboard
+    if 'username' in session:
+        return redirect(url_for('dashboard'))
+    return render_template('login.html', google_oauth_enabled=GOOGLE_OAUTH_ENABLED)
+
+
+@app.route('/login/google')
+def login_google():
+    """Inicia el flujo OAuth: redirige al consentimiento de Google."""
+    if not GOOGLE_OAUTH_ENABLED:
+        flash('El inicio de sesión con Google no está configurado.', 'danger')
+        return redirect(url_for('login'))
+    flow = _build_oauth_flow()
+    auth_url, state = flow.authorization_url(
+        access_type='offline',
+        include_granted_scopes='true',
+        prompt='select_account',
+    )
+    session['oauth_state'] = state
+    return redirect(auth_url)
+
+
+@app.route('/oauth2callback')
+def oauth2callback():
+    """Callback de Google: valida el token, comprueba lista blanca y crea sesión."""
+    if not GOOGLE_OAUTH_ENABLED:
+        flash('El inicio de sesión con Google no está configurado.', 'danger')
+        return redirect(url_for('login'))
+
+    # Verificación de state (protección CSRF)
+    state = session.get('oauth_state')
+    if not state or request.args.get('state') != state:
+        flash('Sesión de login inválida o expirada. Intenta de nuevo.', 'danger')
+        return redirect(url_for('login'))
+
+    # Si el usuario canceló el consentimiento
+    if request.args.get('error'):
+        flash('Inicio de sesión con Google cancelado.', 'warning')
+        return redirect(url_for('login'))
+
+    try:
+        flow = _build_oauth_flow(state=state)
+        flow.fetch_token(authorization_response=request.url)
+        credentials = flow.credentials
+
+        # Validar el id_token y extraer el email verificado
+        from google.oauth2 import id_token as google_id_token
+        from google.auth.transport import requests as google_requests
+        id_info = google_id_token.verify_oauth2_token(
+            credentials.id_token, google_requests.Request(), GOOGLE_CLIENT_ID,
+            clock_skew_in_seconds=10,
+        )
+
+        email = (id_info.get('email') or '').strip()
+        email_verified = id_info.get('email_verified', False)
+        nombre = id_info.get('name', email)
+
+        if not email or not email_verified:
+            flash('No se pudo verificar tu correo de Google.', 'danger')
+            return redirect(url_for('login'))
+
+        # --- Verificación de Lista Blanca ---
+        try:
+            allowed_emails = get_allowed_emails()
+        except FileNotFoundError:
+            flash('Error de configuración: archivo de usuarios permitidos no encontrado.', 'danger')
+            return redirect(url_for('login'))
+
+        # Comparación sin distinción de mayúsculas/minúsculas
+        allowed_lower = [e.lower() for e in allowed_emails]
+        if email.lower() in allowed_lower:
+            session['username'] = email
+            session['user_name'] = nombre
+            session.pop('oauth_state', None)
+            flash('¡Inicio de sesión exitoso!', 'success')
+            return redirect(url_for('dashboard'))
         else:
-            flash('Usuario o contraseña incorrectos.', 'danger')
-            
-    return render_template('login.html')
+            flash(f'La cuenta {email} no tiene permiso para acceder a esta aplicación.', 'warning')
+            return redirect(url_for('login'))
+
+    except Exception as e:
+        print(f"❌ Error en OAuth callback: {e}")
+        flash('Error al iniciar sesión con Google. Intenta de nuevo.', 'danger')
+        return redirect(url_for('login'))
+
 
 @app.route('/logout')
 def logout():
@@ -325,8 +447,8 @@ def api_tendencia():
         # Obtener datos de tendencia (optimizado para Render Free)
         fecha_inicio = f"{año}-01-01"
         
-        # Determinar fuente de datos
-        data_source = get_data_source(año)
+        # Determinar fuente de datos (probar enero: usa Supabase si el año está migrado)
+        data_source = get_data_source(año, 1)
         
         # Optimización: Si es año actual con Odoo, solo hasta hoy
         if data_source == 'odoo' and año == datetime.now().year:
@@ -338,55 +460,10 @@ def api_tendencia():
         
         # Obtener resumen mensual
         if data_source == 'supabase':
-            # Para Supabase, cargar datos completos del año y aplicar mismos filtros que KPI
-            print(f"🔥 API TENDENCIA: Cargando datos de Supabase para {año} con filtros correctos")
-            sales_data_anual_api = supabase_manager.get_dashboard_data(fecha_inicio, fecha_fin)
-            print(f"✅ API TENDENCIA: Obtenidos {len(sales_data_anual_api)} registros de Supabase")
-            
-            # Generar resumen mensual con los MISMOS filtros que el KPI Venta
-            resumen_mensual = {}
-            meses_es_build = {
-                1: 'enero', 2: 'febrero', 3: 'marzo', 4: 'abril', 5: 'mayo', 6: 'junio',
-                7: 'julio', 8: 'agosto', 9: 'septiembre', 10: 'octubre', 11: 'noviembre', 12: 'diciembre'
-            }
-            
-            for sale in sales_data_anual_api:
-                invoice_date = sale.get('invoice_date')
-                if not invoice_date:
-                    continue
-                
-                # Extraer año y mes
-                if isinstance(invoice_date, str):
-                    año_venta = int(invoice_date[:4])
-                    mes_venta = int(invoice_date[5:7])
-                else:
-                    año_venta = invoice_date.year
-                    mes_venta = invoice_date.month
-                
-                if año_venta != año:
-                    continue
-                
-                # Aplicar MISMOS filtros que el KPI Venta
-                linea_comercial = sale.get('commercial_line_name', '')
-                
-                # Filtrar VENTA INTERNACIONAL
-                if linea_comercial and 'VENTA INTERNACIONAL' in str(linea_comercial).upper():
-                    continue
-                
-                # Filtrar ventas sin línea comercial
-                if not linea_comercial or linea_comercial in ['Sin Línea', 'NINGUNO', '']:
-                    continue
-                
-                balance = float(sale.get('balance') or sale.get('price_subtotal', 0))
-                
-                # Filtrar ventas negativas o cero
-                if balance <= 0:
-                    continue
-                
-                mes_key = f"{meses_es_build[mes_venta]} {año_venta}"
-                resumen_mensual[mes_key] = resumen_mensual.get(mes_key, 0) + balance
-            
-            print(f"✅ API TENDENCIA: Resumen generado con filtros - {len(resumen_mensual)} meses")
+            # Para Supabase, usar get_sales_by_month que ya suma correctamente sin filtros restrictivos
+            print(f"🔥 API TENDENCIA: Cargando datos de Supabase para {año}")
+            resumen_mensual = supabase_manager.get_sales_by_month(fecha_inicio, fecha_fin)
+            print(f"✅ API TENDENCIA: Resumen mensual obtenido - {len(resumen_mensual)} meses con datos")
             if 'enero 2025' in resumen_mensual:
                 print(f"   📊 Enero 2025: S/ {resumen_mensual['enero 2025']:,.2f}")
         else:
@@ -434,12 +511,17 @@ def api_tendencia():
         
         print(f"✅ API Tendencia: {len(tendencia)} meses procesados para {año}")
         
-        return jsonify({
+        response = jsonify({
             'success': True,
             'año': año,
             'tendencia': tendencia,
             'fuente': data_source
         })
+        # Agregar headers de no-caché
+        response.headers['Cache-Control'] = 'no-store, no-cache, must-revalidate, max-age=0'
+        response.headers['Pragma'] = 'no-cache'
+        response.headers['Expires'] = '0'
+        return response
         
     except Exception as e:
         print(f"❌ Error en API tendencia: {e}")
@@ -501,7 +583,7 @@ def api_rfm_canal():
         return jsonify({'error': str(e)}), 500
 
 
-def generar_datos_ventas_mes(año_para_grafico, data_source, fecha_actual):
+def generar_datos_ventas_mes(año_para_grafico, data_source, fecha_actual, sales_data_anual_override=None):
     """
     Genera los datos del gráfico de ventas por mes con filtros farmacéuticos.
     Esta función se ejecuta siempre, incluso cuando hay caché.
@@ -525,6 +607,19 @@ def generar_datos_ventas_mes(año_para_grafico, data_source, fecha_actual):
     }
     
     try:
+        normalizar_linea = normalizar_linea_comercial
+        extraer_rel = extraer_nombre_relacional
+        meses_get = meses_español.get
+        append_registro = ventas_detalladas_por_mes.append
+        filtros_lineas = filtros_disponibles['lineas_comerciales']
+        filtros_categorias = filtros_disponibles['categorias']
+        filtros_ciclos = filtros_disponibles['ciclos_vida']
+        filtros_vias = filtros_disponibles['vias_administracion']
+        filtros_clasif = filtros_disponibles['clasificaciones']
+        filtros_formas = filtros_disponibles['formas_farmaceuticas']
+        filtros_prod = filtros_disponibles['lineas_produccion']
+        lineas_invalidas = {'Sin Línea', 'NINGUNO', ''}
+
         fecha_inicio_anual = f"{año_para_grafico}-01-01"
         
         # Optimización Render Free: Solo consultar hasta el mes actual, no todo el año
@@ -538,7 +633,10 @@ def generar_datos_ventas_mes(año_para_grafico, data_source, fecha_actual):
             fecha_fin_anual = f"{año_para_grafico}-12-31"
             print(f"📅 Cargando ventas anuales: {fecha_inicio_anual} a {fecha_fin_anual}")
         
-        if data_source == 'supabase':
+        if sales_data_anual_override is not None:
+            sales_data_anual = sales_data_anual_override
+            print(f"⚡ Ventas anuales reutilizadas desde contexto: {len(sales_data_anual)} registros")
+        elif data_source == 'supabase':
             sales_data_anual = supabase_manager.get_dashboard_data(fecha_inicio_anual, fecha_fin_anual)
         else:
             sales_data_anual = data_manager.get_sales_lines(
@@ -556,8 +654,8 @@ def generar_datos_ventas_mes(año_para_grafico, data_source, fecha_actual):
                 continue
                 
             try:
-                fecha_obj = datetime.strptime(fecha_str[:10], '%Y-%m-%d')
-                mes_nombre = meses_español.get(fecha_obj.month, '')
+                mes_num = int(fecha_str[5:7])
+                mes_nombre = meses_get(mes_num, '')
                 
                 if not mes_nombre:
                     continue
@@ -572,11 +670,11 @@ def generar_datos_ventas_mes(año_para_grafico, data_source, fecha_actual):
                         continue
                     
                     # Filtrar ventas sin línea comercial válida (igual que KPI Venta)
-                    if not linea_comercial or linea_comercial in ['Sin Línea', 'NINGUNO', '']:
+                    if not linea_comercial or linea_comercial in lineas_invalidas:
                         continue
                     
                     if linea_comercial and linea_comercial != 'Sin Línea':
-                        linea_comercial = normalizar_linea_comercial(linea_comercial)
+                        linea_comercial = normalizar_linea(linea_comercial)
                     
                     categoria = sale.get('category_name', 'Sin Categoría')
                     via_administracion = sale.get('administration_way_name', 'No Definido')
@@ -588,39 +686,23 @@ def generar_datos_ventas_mes(año_para_grafico, data_source, fecha_actual):
                     total_venta = abs(float(sale.get('price_subtotal', 0)))
                 else:
                     # Odoo: campos vienen como [id, nombre]
-                    linea_comercial_info = sale.get('commercial_line_national_id')
+                    linea_comercial_original = extraer_rel(sale.get('commercial_line_national_id'))
                     linea_comercial = 'Sin Línea'
-                    if linea_comercial_info and isinstance(linea_comercial_info, list) and len(linea_comercial_info) > 1:
-                        linea_comercial_original = linea_comercial_info[1]
+                    if linea_comercial_original:
                         # Filtrar VENTA INTERNACIONAL (igual que KPI Venta)
                         if 'VENTA INTERNACIONAL' in linea_comercial_original.upper():
                             continue
-                        linea_comercial = normalizar_linea_comercial(linea_comercial_original)
+                        linea_comercial = normalizar_linea(linea_comercial_original)
                     
-                    categ_info = sale.get('categ_id')
-                    categoria = 'Sin Categoría'
-                    if categ_info and isinstance(categ_info, list) and len(categ_info) > 1:
-                        categoria = categ_info[1]
+                    categoria = extraer_rel(sale.get('categ_id'), 'Sin Categoría')
                     
-                    via_info = sale.get('administration_way_id')
-                    via_administracion = 'No Definido'
-                    if via_info and isinstance(via_info, list) and len(via_info) > 1:
-                        via_administracion = via_info[1]
+                    via_administracion = extraer_rel(sale.get('administration_way_id'), 'No Definido')
                     
-                    clasif_info = sale.get('pharmacological_classification_id')
-                    clasificacion = 'No Definido'
-                    if clasif_info and isinstance(clasif_info, list) and len(clasif_info) > 1:
-                        clasificacion = clasif_info[1]
+                    clasificacion = extraer_rel(sale.get('pharmacological_classification_id'), 'No Definido')
                     
-                    forma_info = sale.get('pharmaceutical_forms_id')
-                    forma_farmaceutica = 'No Definido'
-                    if forma_info and isinstance(forma_info, list) and len(forma_info) > 1:
-                        forma_farmaceutica = forma_info[1]
+                    forma_farmaceutica = extraer_rel(sale.get('pharmaceutical_forms_id'), 'No Definido')
                     
-                    linea_prod_info = sale.get('production_line_id')
-                    linea_produccion = 'No Definido'
-                    if linea_prod_info and isinstance(linea_prod_info, list) and len(linea_prod_info) > 1:
-                        linea_produccion = linea_prod_info[1]
+                    linea_produccion = extraer_rel(sale.get('production_line_id'), 'No Definido')
                     
                     ciclo_vida = sale.get('product_life_cycle', 'No Definido')
                     
@@ -633,15 +715,15 @@ def generar_datos_ventas_mes(año_para_grafico, data_source, fecha_actual):
                     continue
                 
                 # Agregar a filtros
-                filtros_disponibles['lineas_comerciales'].add(linea_comercial)
-                filtros_disponibles['categorias'].add(categoria)
-                filtros_disponibles['ciclos_vida'].add(ciclo_vida)
-                filtros_disponibles['vias_administracion'].add(via_administracion)
-                filtros_disponibles['clasificaciones'].add(clasificacion)
-                filtros_disponibles['formas_farmaceuticas'].add(forma_farmaceutica)
-                filtros_disponibles['lineas_produccion'].add(linea_produccion)
-                
-                ventas_detalladas_por_mes.append({
+                filtros_lineas.add(linea_comercial)
+                filtros_categorias.add(categoria)
+                filtros_ciclos.add(ciclo_vida)
+                filtros_vias.add(via_administracion)
+                filtros_clasif.add(clasificacion)
+                filtros_formas.add(forma_farmaceutica)
+                filtros_prod.add(linea_produccion)
+
+                append_registro({
                     'mes_nombre': mes_nombre,
                     'linea_comercial': linea_comercial,
                     'categoria': categoria,
@@ -744,7 +826,8 @@ def dashboard():
             mes_sel_int = 1
         
         # Determinar fuente de datos (mover antes del check de caché)
-        data_source = get_data_source(año_sel_int)
+        # Pasamos el mes para enrutar meses cerrados de 2026+ a Supabase
+        data_source = get_data_source(año_sel_int, mes_sel_int)
 
         # --- REVISAR CACHÉ ANTES DE HACER CÁLCULOS ---
         # Permitir bypass del caché con parámetro ?nocache=1
@@ -783,8 +866,10 @@ def dashboard():
                 tendencia_12_meses_recalculada = []
                 fecha_inicio_tendencia = f"{año_seleccionado}-01-01"
                 
-                tendencia_data_source = get_data_source(año_seleccionado)
-                
+                # Tendencia anual: probamos enero para usar Supabase si el año está migrado
+                # (el resumen mensual de Odoo está roto: "Función agregada inválida 'month'")
+                tendencia_data_source = get_data_source(año_seleccionado, 1)
+
                 # Optimización: Si es año actual con Odoo, solo hasta hoy
                 if tendencia_data_source == 'odoo' and año_seleccionado == datetime.now().year:
                     fecha_fin_tendencia = datetime.now().strftime('%Y-%m-%d')
@@ -989,11 +1074,39 @@ def dashboard():
         # Las líneas comerciales se generan dinámicamente más adelante.
         
         # Obtener datos reales de ventas desde la fuente correspondiente
+        is_render = os.getenv('RENDER', 'false').lower() == 'true'
+        sales_data_anual_compartida = None
         try:
             # Las fechas de inicio y fin ahora se calculan más arriba
             
-            # Obtener datos de ventas reales desde Supabase u Odoo
-            if data_source == 'supabase':
+            # En desarrollo local (no Render), cargar el año una sola vez y derivar el mes
+            if not is_render:
+                fecha_inicio_anual = f"{año_sel_int}-01-01"
+                if data_source == 'odoo' and año_sel_int == fecha_actual.year:
+                    fecha_fin_anual = f"{año_sel_int}-{fecha_actual.month:02d}-{fecha_actual.day:02d}"
+                else:
+                    fecha_fin_anual = f"{año_sel_int}-12-31"
+
+                if data_source == 'supabase':
+                    sales_data_anual_compartida = supabase_manager.get_dashboard_data(fecha_inicio_anual, fecha_fin_anual)
+                else:
+                    sales_data_anual_compartida = data_manager.get_sales_lines(
+                        date_from=fecha_inicio_anual,
+                        date_to=fecha_fin_anual,
+                        limit=50000
+                    )
+
+                sales_data = []
+                for sale in sales_data_anual_compartida:
+                    fecha_str = (sale.get('invoice_date') or sale.get('date_order', ''))[:10]
+                    if not fecha_str:
+                        continue
+                    if fecha_inicio <= fecha_str <= fecha_fin:
+                        sales_data.append(sale)
+
+                print(f"⚡ Datos del mes derivados de carga anual compartida: {len(sales_data)} líneas")
+            # En Render, mantener estrategia liviana mensual
+            elif data_source == 'supabase':
                 sales_data = supabase_manager.get_dashboard_data(fecha_inicio, fecha_fin)
                 print(f"📊 Obtenidas {len(sales_data)} líneas de ventas desde Supabase")
             else:
@@ -1015,7 +1128,7 @@ def dashboard():
                 fecha_fin_mes_sel = f"{int(año_sel):04d}-{int(mes_sel):02d}-{ultimo_dia_mes_sel:02d}"
                 
                 # Determinar fuente de datos según el AÑO SELECCIONADO (no el año actual del sistema)
-                source = get_data_source(año_seleccionado)
+                source = get_data_source(año_seleccionado, mes_sel_int)
                 
                 # ESTRATEGIA MIXTA: Para años históricos (2025), usar cartera total de Odoo
                 # pero activos desde Supabase para comparar contra la base completa
@@ -1083,7 +1196,10 @@ def dashboard():
         ventas_categoria_excluida = 0
         
         # Categorías a excluir (igual que Proyecto A)
-        categorias_excluidas = [315, 333, 304, 314, 318, 339]
+        categorias_excluidas = {315, 333, 304, 314, 318, 339}
+        normalizar_linea = normalizar_linea_comercial
+        limpiar_atrevia = limpiar_nombre_atrevia
+        extraer_rel = extraer_nombre_relacional
         
         # DEBUG: Ver estructura de un registro de ventas
         if sales_data and len(sales_data) > 0:
@@ -1103,9 +1219,10 @@ def dashboard():
             print(f"ℹ️ Fuente: Odoo - Se aplicarán filtros de categorías e internacional")
         
         for sale in sales_data:
+            sale_get = sale.get
             # Excluir categorías específicas (solo para Odoo)
             if aplicar_filtros:
-                categ_id = sale.get('categ_id')
+                categ_id = sale_get('categ_id')
                 if categ_id and isinstance(categ_id, list) and len(categ_id) > 0:
                     categ_id_num = categ_id[0]
                     if categ_id_num in categorias_excluidas:
@@ -1113,32 +1230,33 @@ def dashboard():
                         continue
             
             # Excluir VENTA INTERNACIONAL (solo para Odoo)
-            linea_comercial = sale.get('commercial_line_national_id')
+            linea_comercial = sale_get('commercial_line_national_id')
             nombre_linea_actual = None
-            if linea_comercial and isinstance(linea_comercial, list) and len(linea_comercial) > 1:
-                nombre_linea_original = linea_comercial[1].upper()
+            nombre_linea_extraido = extraer_rel(linea_comercial)
+            if nombre_linea_extraido:
+                nombre_linea_original = nombre_linea_extraido.upper()
                 if aplicar_filtros and 'VENTA INTERNACIONAL' in nombre_linea_original:
                     continue
                 # Aplicar normalización para agrupar GENVET y MARCA BLANCA como TERCEROS
-                nombre_linea_actual = normalizar_linea_comercial(nombre_linea_original)
+                nombre_linea_actual = normalizar_linea(nombre_linea_original)
             # NOTA: Si no tiene linea_comercial, nombre_linea_actual queda None
             # y esa venta NO se sumará a ninguna línea (se ignora silenciosamente)
             
             # También filtrar por canal de ventas (solo para Odoo)
             if aplicar_filtros:
-                canal_ventas = sale.get('sales_channel_id')
+                canal_ventas = sale_get('sales_channel_id')
                 if canal_ventas and isinstance(canal_ventas, list) and len(canal_ventas) > 1:
                     nombre_canal = canal_ventas[1].upper()
                     if 'VENTA INTERNACIONAL' in nombre_canal or 'INTERNACIONAL' in nombre_canal:
                         continue
             
-            canal_ventas = sale.get('sales_channel_id')
+            canal_ventas = sale_get('sales_channel_id')
             if not aplicar_filtros or not (canal_ventas and isinstance(canal_ventas, list)):
                 # Contar ventas sin canal pero NO excluir
                 ventas_sin_canal += 1
             
             # Procesar el balance de la venta (Odoo usa 'balance', Supabase usa 'price_subtotal')
-            balance_float = float(sale.get('balance') or sale.get('price_subtotal', 0))
+            balance_float = float(sale_get('balance') or sale_get('price_subtotal', 0))
             if balance_float != 0:
                 
                 # Sumar a ventas totales por línea
@@ -1146,7 +1264,7 @@ def dashboard():
                     ventas_por_linea[nombre_linea_actual] = ventas_por_linea.get(nombre_linea_actual, 0) + balance_float
                     
                     # Contar clientes únicos por línea comercial
-                    partner_name = sale.get('partner_name', '').strip()
+                    partner_name = sale_get('partner_name', '').strip()
                     if partner_name:
                         if nombre_linea_actual not in clientes_por_linea:
                             clientes_por_linea[nombre_linea_actual] = set()
@@ -1156,14 +1274,14 @@ def dashboard():
                         canal_venta = 'NACIONAL'  # Default
                         
                         # Intentar primero con campo 'canal' de Supabase
-                        canal_directo = sale.get('canal')
+                        canal_directo = sale_get('canal')
                         if canal_directo:
                             canal_str = str(canal_directo).upper()
                             if 'DIGITAL' in canal_str or 'E-COMMERCE' in canal_str or 'ECOMMERCE' in canal_str:
                                 canal_venta = 'DIGITAL'
                         else:
                             # Si no existe 'canal', usar sales_channel_id de Odoo
-                            sales_channel = sale.get('sales_channel_id')
+                            sales_channel = sale_get('sales_channel_id')
                             if sales_channel and isinstance(sales_channel, list) and len(sales_channel) > 1:
                                 channel_name = sales_channel[1].upper()
                                 if 'DIGITAL' in channel_name or 'E-COMMERCE' in channel_name or 'ECOMMERCE' in channel_name:
@@ -1180,23 +1298,23 @@ def dashboard():
                         ventas_por_linea_y_canal[nombre_linea_actual][canal_venta] += balance_float
                 
                 # LÓGICA FINAL: Sumar si la RUTA (route_id) coincide con los valores especificados
-                ruta = sale.get('route_id')
+                ruta = sale_get('route_id')
                 # Se cambia la comparación al ID de la ruta (ruta[0]) para evitar problemas con traducciones.
                 if isinstance(ruta, list) and len(ruta) > 0 and ruta[0] in [18, 19]:
                     if nombre_linea_actual:
                         ventas_por_ruta[nombre_linea_actual] = ventas_por_ruta.get(nombre_linea_actual, 0) + balance_float
                 
                 # Sumar a ventas de productos nuevos (IPN) - Lógica restaurada
-                ciclo_vida = sale.get('product_life_cycle')
+                ciclo_vida = sale_get('product_life_cycle')
                 if ciclo_vida and ciclo_vida == 'nuevo':
                     if nombre_linea_actual:
                         ventas_ipn_por_linea[nombre_linea_actual] = ventas_ipn_por_linea.get(nombre_linea_actual, 0) + balance_float
                 
                 # Agrupar por producto para Top 7
-                producto_nombre = sale.get('name', '').strip()
+                producto_nombre = sale_get('name', '').strip()
                 if producto_nombre:
                     # Limpiar nombres de ATREVIA eliminando indicadores de tamaño/presentación
-                    producto_nombre_limpio = limpiar_nombre_atrevia(producto_nombre)
+                    producto_nombre_limpio = limpiar_atrevia(producto_nombre)
                     ventas_por_producto[producto_nombre_limpio] = ventas_por_producto.get(producto_nombre_limpio, 0) + balance_float
                     if producto_nombre_limpio not in ciclo_vida_por_producto:
                         ciclo_vida_por_producto[producto_nombre_limpio] = ciclo_vida
@@ -1323,7 +1441,7 @@ def dashboard():
         print("🔍 Calculando cobertura de clientes por canal...")
         
         # Determinar fuente de datos según AÑO SELECCIONADO
-        source_cobertura = get_data_source(año_seleccionado)
+        source_cobertura = get_data_source(año_seleccionado, mes_sel_int)
         
         if source_cobertura == 'supabase':
             print("📊 Usando Supabase para cálculo de cobertura")
@@ -1982,7 +2100,9 @@ def dashboard():
         fecha_inicio_tendencia = f"{año_seleccionado}-01-01"
         
         # Obtener resumen solo del año seleccionado (no últimos 12 meses mezclados)
-        tendencia_data_source = get_data_source(año_seleccionado)
+        # Tendencia anual: probamos enero para usar Supabase si el año está migrado
+        # (el resumen mensual de Odoo está roto: "Función agregada inválida 'month'")
+        tendencia_data_source = get_data_source(año_seleccionado, 1)
         
         # Optimización: Si es año actual con Odoo, solo hasta hoy
         if tendencia_data_source == 'odoo' and año_seleccionado == fecha_actual.year:
@@ -2615,7 +2735,22 @@ def dashboard():
             print(f"💰 Total venta calculado con filtros Odoo: {total_venta:,.2f}")
         
         total_venta_calculado = total_venta # Renombrar para claridad en el bucle
-        
+
+        # Mes en curso: reflejar la venta real (MTD) recién calculada en la tendencia,
+        # porque ese mes aún no está migrado a Supabase (queda en 0 en el resumen).
+        # Se hace AQUÍ porque total_venta se finaliza después de construir la tendencia.
+        if año_seleccionado == fecha_actual.year and mes_sel_int == fecha_actual.month:
+            _mes_curso_key = f"{año_seleccionado}-{fecha_actual.month:02d}"
+            for _t in tendencia_12_meses:
+                if _t.get('mes') == _mes_curso_key:
+                    _t['venta'] = total_venta
+                    _t['cumplimiento'] = (total_venta / _t['meta'] * 100) if _t.get('meta') else 0
+                    # Marcar como parcial: se muestra en Venta Real pero NO entra en la
+                    # regresión de la línea de Tendencia (un mes incompleto la sesgaría).
+                    _t['es_parcial'] = True
+                    print(f"📈 Tendencia: mes en curso {_mes_curso_key} = S/ {total_venta:,.2f} (venta real MTD, parcial)")
+                    break
+
         # Log de ventas excluidas (solo relevante para Odoo)
         if ventas_categoria_excluida > 0:
             print(f"⚠️ Se excluyeron {ventas_categoria_excluida} líneas por categoría excluida [315, 333, 304, 314, 318, 339]")
@@ -2730,6 +2865,40 @@ def dashboard():
             'cobertura_clientes': cobertura_clientes
         }
 
+        # --- KPIs ANUALES (acumulado del año) ---
+        # Venta y meta anuales = suma de la tendencia (meses cerrados de Supabase
+        # + mes en curso en vivo ya inyectado). Total = el "Total {año}" del gráfico.
+        venta_total_anual = sum(t.get('venta', 0) for t in tendencia_12_meses)
+        meta_total_anual = sum(t.get('meta', 0) for t in tendencia_12_meses)
+
+        # Meta IPN anual = suma de metas_ipn de los 12 meses
+        meta_ipn_anual = 0
+        for _m in range(1, 13):
+            _mk = f"{año_seleccionado}-{_m:02d}"
+            meta_ipn_anual += sum(metas_historicas.get(_mk, {}).get('metas_ipn', {}).values())
+
+        # Venta IPN anual = IPN de meses cerrados (Supabase) + mes en curso (vivo)
+        venta_ipn_anual = 0
+        try:
+            if SUPABASE_ENABLED:
+                venta_ipn_anual = supabase_manager.get_ipn_total(
+                    f"{año_seleccionado}-01-01", f"{año_seleccionado}-12-31")
+        except Exception as _e:
+            print(f"⚠️ Error calculando Venta IPN anual: {_e}")
+        # Sumar el mes en curso (no migrado) solo si lo estamos viendo, para que
+        # cuadre con venta_total_anual (que también incluye el mes en curso solo entonces)
+        if año_seleccionado == fecha_actual.year and mes_sel_int == fecha_actual.month:
+            venta_ipn_anual += total_venta_pn
+
+        kpis_anual = {
+            'meta_total': meta_total_anual,
+            'venta_total': venta_total_anual,
+            'porcentaje_avance': (venta_total_anual / meta_total_anual * 100) if meta_total_anual > 0 else 0,
+            'meta_ipn': meta_ipn_anual,
+            'venta_ipn': venta_ipn_anual,
+            'porcentaje_avance_ipn': (venta_ipn_anual / meta_ipn_anual * 100) if meta_ipn_anual > 0 else 0,
+        }
+
         # --- Avance lineal: proyección de cierre y faltante ---
         # Proyección mensual lineal: proyectar ventas actuales al mes completo
         try:
@@ -2787,7 +2956,7 @@ def dashboard():
 
         # 1. Obtener miembros y metas del equipo ECOMMERCE
         equipos_guardados = gs_manager.read_equipos()        
-        ecommerce_vendor_ids = [str(vid) for vid in equipos_guardados.get('ecommerce', [])]
+        ecommerce_vendor_ids = {str(vid) for vid in equipos_guardados.get('ecommerce', [])}
         
         if ecommerce_vendor_ids:
             # 2. Obtener la meta total de ECOMMERCE desde las metas por línea
@@ -2845,8 +3014,6 @@ def dashboard():
         # - Supabase: >5 min para 31K registros (32 requests HTTP de 1K c/u)
         # SOLUCIÓN: Deshabilitar en producción, habilitar solo en desarrollo local
         
-        is_render = os.getenv('RENDER', 'false').lower() == 'true'
-        
         if is_render:
             # Render Free: Omitir siempre (red demasiado lenta)
             print(f"⏭️  Gráfico de productos DESHABILITADO en Render Free Tier")
@@ -2866,7 +3033,12 @@ def dashboard():
         else:
             # Desarrollo local: Red rápida, generar normalmente
             print(f"📊 Generando gráfico de productos filtrados para año {año_seleccionado} ({data_source})")
-            datos_ventas_mes_filtros = generar_datos_ventas_mes(año_seleccionado, data_source, fecha_actual)
+            datos_ventas_mes_filtros = generar_datos_ventas_mes(
+                año_seleccionado,
+                data_source,
+                fecha_actual,
+                sales_data_anual_override=sales_data_anual_compartida
+            )
         # --- FIN: GRÁFICO DE VENTAS POR MES CON FILTROS ---
 
         # Ordenar los datos de la tabla: primero las filas TODOS, luego DIGITAL, luego NACIONAL
@@ -2878,6 +3050,8 @@ def dashboard():
         datos_todos_sorted = sorted(datos_todos, key=lambda x: x['venta'], reverse=True)
         datos_digital_sorted = sorted(datos_digital, key=lambda x: x['venta'], reverse=True)
         datos_nacional_sorted = sorted(datos_nacional, key=lambda x: x['venta'], reverse=True)
+        datos_digital_por_linea = {item['nombre']: item for item in datos_digital_sorted}
+        datos_nacional_por_linea = {item['nombre']: item for item in datos_nacional_sorted}
         
         # Intercalar: para cada línea TODOS, agregar su DIGITAL y NACIONAL correspondiente
         datos_lineas_tabla_sorted = []
@@ -2885,16 +3059,14 @@ def dashboard():
             nombre_linea = linea_todos['nombre']
             # Agregar la fila TODOS
             datos_lineas_tabla_sorted.append(linea_todos)
-            # Buscar y agregar la fila DIGITAL correspondiente
-            for linea_digital in datos_digital_sorted:
-                if linea_digital['nombre'] == nombre_linea:
-                    datos_lineas_tabla_sorted.append(linea_digital)
-                    break
-            # Buscar y agregar la fila NACIONAL correspondiente
-            for linea_nacional in datos_nacional_sorted:
-                if linea_nacional['nombre'] == nombre_linea:
-                    datos_lineas_tabla_sorted.append(linea_nacional)
-                    break
+            # Agregar la fila DIGITAL correspondiente
+            linea_digital = datos_digital_por_linea.get(nombre_linea)
+            if linea_digital:
+                datos_lineas_tabla_sorted.append(linea_digital)
+            # Agregar la fila NACIONAL correspondiente
+            linea_nacional = datos_nacional_por_linea.get(nombre_linea)
+            if linea_nacional:
+                datos_lineas_tabla_sorted.append(linea_nacional)
 
         # Preparar los datos para renderizar
         render_data = {
@@ -2906,6 +3078,7 @@ def dashboard():
             'mes_nombre': mes_nombre,
             'dia_actual': dia_actual,
             'kpis': kpis,
+            'kpis_anual': kpis_anual,
             'datos_lineas': datos_lineas,
             'datos_lineas_tabla': datos_lineas_tabla_sorted,
             'datos_clientes_por_linea': datos_clientes_por_linea,
@@ -3650,9 +3823,9 @@ def api_mapa_ventas():
         ultimo_dia = calendar.monthrange(año, mes)[1]
         fecha_fin = datetime(año, mes, ultimo_dia).strftime('%Y-%m-%d')
         
-        # Determinar fuente de datos
-        source = get_data_source(año)
-        
+        # Determinar fuente de datos (meses cerrados de 2026+ -> Supabase)
+        source = get_data_source(año, mes)
+
         if source == 'supabase':
             print(f"🗺️ Obteniendo datos del mapa desde Supabase ({año}-{mes:02d})")
             sales_data = supabase_manager.get_sales_data(fecha_inicio, fecha_fin)
@@ -3919,9 +4092,9 @@ def api_cobertura_filtrada():
         fecha_fin = datetime(año_int, mes_int, ultimo_dia)
         fecha_inicio_ano = datetime(año_int, 1, 1)
         
-        # Determinar fuente de datos
-        source = get_data_source(año_int)
-        
+        # Determinar fuente de datos (meses cerrados de 2026+ -> Supabase)
+        source = get_data_source(año_int, mes_int)
+
         if source != 'odoo':
             # Para Supabase, calcular cobertura usando campo 'canal'
             print(f"📊 Año {año_int} usa Supabase - calculando cobertura por canal")

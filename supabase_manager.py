@@ -23,6 +23,7 @@ class SupabaseManager:
         
         self.supabase: Client = create_client(supabase_url, supabase_key)
         self._year_cache = {}  # Cache para años disponibles
+        self._month_cache = {}  # Cache para meses ya migrados (año, mes) -> bool
         
         # Caché: Deshabilitar en Render Free (red lenta), habilitar en local
         # Render Free Tier tiene red 0.1 CPU compartida, cargar 31K registros = timeout
@@ -204,6 +205,37 @@ class SupabaseManager:
             print(f"❌ Error al contar clientes en Supabase: {e}")
             return 0
     
+    def get_ipn_total(self, date_from: str, date_to: str) -> float:
+        """
+        Suma de ventas (price_subtotal) de productos NUEVOS (IPN) en el rango de fechas.
+        IPN = product_life_cycle == 'nuevo' (misma definición que el cálculo mensual).
+        """
+        try:
+            año = int(date_from[:4])
+            table_name = self._get_table_for_year(año)
+            total = 0.0
+            page_size = 1000
+            offset = 0
+            while True:
+                result = self.supabase.table(table_name)\
+                    .select('price_subtotal')\
+                    .eq('product_life_cycle', 'nuevo')\
+                    .gte('invoice_date', date_from)\
+                    .lte('invoice_date', date_to)\
+                    .range(offset, offset + page_size - 1)\
+                    .execute()
+                if not result.data:
+                    break
+                total += sum(float(r.get('price_subtotal') or 0) for r in result.data)
+                if len(result.data) < page_size:
+                    break
+                offset += page_size
+            print(f"💊 IPN Supabase ({date_from}..{date_to}): S/ {total:,.2f}")
+            return total
+        except Exception as e:
+            print(f"⚠️ Error get_ipn_total: {e}")
+            return 0.0
+
     def get_active_partners_by_channel(self, date_from: str, date_to: str) -> dict:
         """
         Obtiene el número de clientes únicos por canal de venta
@@ -323,7 +355,8 @@ class SupabaseManager:
             
             for row in filtered_data:
                 invoice_date = row.get('invoice_date', '')
-                price_subtotal = float(row.get('price_subtotal', 0))
+                # Usar balance si está disponible (igual que el KPI Venta), sino price_subtotal
+                balance = float(row.get('balance') or row.get('price_subtotal', 0))
                 
                 if not invoice_date or len(invoice_date) < 7:
                     continue
@@ -333,7 +366,7 @@ class SupabaseManager:
                 mes = int(invoice_date[5:7])
                 
                 mes_nombre = f"{meses_es.get(mes, mes)} {año}"
-                resumen[mes_nombre] = resumen.get(mes_nombre, 0) + price_subtotal
+                resumen[mes_nombre] = resumen.get(mes_nombre, 0) + balance
                 total_registros += 1
             
             print(f"📊 Resumen mensual Supabase: {total_registros} registros sumados")
@@ -406,8 +439,38 @@ class SupabaseManager:
         except Exception as e:
             print(f"⚠️ Error verificando año en Supabase: {e}")
             return False
+
+    def is_month_in_supabase(self, año: int, mes: int) -> bool:
+        """
+        Verifica si un mes específico (año, mes) ya fue migrado a Supabase (con cache).
+
+        Se usa para enrutar meses CERRADOS de 2026+ a Supabase en lugar de Odoo en vivo.
+        """
+        clave = (año, mes)
+        if clave in self._month_cache:
+            return self._month_cache[clave]
+
+        try:
+            import calendar
+            table_name = self._get_table_for_year(año)
+            ultimo_dia = calendar.monthrange(año, mes)[1]
+            fecha_inicio = f"{año}-{mes:02d}-01"
+            fecha_fin = f"{año}-{mes:02d}-{ultimo_dia:02d}"
+            result = self.supabase.table(table_name)\
+                .select('id', count='exact')\
+                .gte('invoice_date', fecha_inicio)\
+                .lte('invoice_date', fecha_fin)\
+                .limit(1)\
+                .execute()
+
+            has_data = result.count > 0 if hasattr(result, 'count') else len(result.data) > 0
+            self._month_cache[clave] = has_data
+            print(f"  📊 Verificado mes {año}-{mes:02d} en {table_name}: has_data={has_data}")
+            return has_data
+        except Exception as e:
+            print(f"⚠️ Error verificando mes en Supabase: {e}")
             return False
-    
+
     def get_dashboard_data(self, fecha_inicio: str, fecha_fin: str) -> List[Dict]:
         """
         Obtiene datos formateados para el dashboard, compatible con OdooManager

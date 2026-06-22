@@ -83,6 +83,27 @@ body.login-bg {
 .agrovet-login-btn:hover {
     background: #19786a;
 }
+.google-login-btn {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 12px;
+    width: 100%;
+    background: #fff;
+    color: #3c4043;
+    border: 1.2px solid #dadce0;
+    border-radius: 13px;
+    font-size: 1.02em;
+    font-weight: 600;
+    height: 50px;
+    margin-top: 8px;
+    text-decoration: none;
+    transition: background 0.2s, box-shadow 0.2s;
+}
+.google-login-btn:hover {
+    background: #f7f8f8;
+    box-shadow: 0 1px 3px rgba(0,0,0,0.12);
+}
 </style>
 <div style="display: flex; justify-content: center; align-items: center; min-height: 100vh;">
     <div class="agrovet-login-card">
@@ -100,19 +121,20 @@ body.login-bg {
                 {% endfor %}
             {% endif %}
         {% endwith %}
-    <form method="post" action="{{ url_for('login') }}" autocomplete="on" style="width: 100%; max-width: 326px; margin: 0 auto;">
-            <label for="username" class="agrovet-login-label">Email</label>
-            <div style="position: relative; width: 100%;">
-                <span class="agrovet-login-icon"><i class="bi bi-person"></i></span>
-                <input type="email" class="agrovet-login-input" id="username" name="username" required autocomplete="email">
-            </div>
-            <label for="password" class="agrovet-login-label">Password</label>
-            <div style="position: relative; width: 100%;">
-                <span class="agrovet-login-icon"><i class="bi bi-lock"></i></span>
-                <input type="password" class="agrovet-login-input" id="password" name="password" required autocomplete="current-password">
-            </div>
-            <button type="submit" class="agrovet-login-btn">Log in</button>
-        </form>
+        <div style="width: 100%; max-width: 326px; margin: 0 auto;">
+            <a href="{{ url_for('login_google') }}" class="google-login-btn">
+                <svg width="20" height="20" viewBox="0 0 48 48" aria-hidden="true">
+                    <path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/>
+                    <path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/>
+                    <path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/>
+                    <path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/>
+                </svg>
+                <span>Iniciar sesión con Google</span>
+            </a>
+            <p style="color:#888; font-size:0.82em; text-align:center; margin-top:16px;">
+                Acceso restringido al personal autorizado de AGROVET MARKET.
+            </p>
+        </div>
     </div>
 </div>
 <script>

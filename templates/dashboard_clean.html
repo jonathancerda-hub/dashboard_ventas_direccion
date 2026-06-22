@@ -118,6 +118,37 @@
         <!-- Proyección lineal y faltante movidas a Avance Diario (ver más abajo) -->
     </div>
 
+    <!-- Fila ANUAL - KPIs acumulados del año -->
+    {% if kpis_anual %}
+    <div class="kpi-annual-title">📅 Acumulado {{ año_seleccionado }}</div>
+    <div class="kpi-row kpi-row-annual">
+        <div class="kpi-card kpi-meta">
+            <div class="kpi-label">Meta Año</div>
+            <div class="kpi-value">{{ "{:,.0f}".format(kpis_anual.meta_total) }}</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-label">Venta Año</div>
+            <div class="kpi-value">{{ "{:,.0f}".format(kpis_anual.venta_total) }}</div>
+        </div>
+        <div class="kpi-card kpi-avance">
+            <div class="kpi-label">% Avance Año</div>
+            <div class="kpi-value">{{ "{:.1f} %".format(kpis_anual.porcentaje_avance) }}</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-label">Meta IPN Año</div>
+            <div class="kpi-value">{{ "{:,.0f}".format(kpis_anual.meta_ipn) }}</div>
+        </div>
+        <div class="kpi-card">
+            <div class="kpi-label">Venta IPN Año</div>
+            <div class="kpi-value">{{ "{:,.0f}".format(kpis_anual.venta_ipn) }}</div>
+        </div>
+        <div class="kpi-card kpi-avance">
+            <div class="kpi-label">% Avance IPN Año</div>
+            <div class="kpi-value">{{ "{:.1f} %".format(kpis_anual.porcentaje_avance_ipn) }}</div>
+        </div>
+    </div>
+    {% endif %}
+
     <!-- Tendencia Histórica de Ventas (12 meses) - MOVIDO AQUÍ PRIMERO -->
     <div class="grafico-container" style="margin-top: 25px;">
         <div class="tabla-header" style="display: flex; justify-content: space-between; align-items: center;">
@@ -1628,6 +1659,22 @@
                     gap: 15px;
                 }
 
+                .kpi-row-annual {
+                    margin-top: 12px;
+                }
+
+                .kpi-annual-title {
+                    margin: 18px 0 6px 2px;
+                    font-size: 0.9em;
+                    font-weight: 700;
+                    color: #6b4e7d;
+                    letter-spacing: 0.02em;
+                }
+
+                .kpi-row-annual .kpi-card {
+                    background: #faf8fc;
+                }
+
                 .kpi-card {
                     background: white;
                     padding: 5px 15px;
@@ -2513,18 +2560,26 @@
                             })
                             .catch(error => console.error('Error al cargar datos del año anterior:', error));
                     } else {
-                        // Cálculo normal de línea de tendencia (Regresión Lineal)
-                        const n = data.length;
-                        let sumX = 0, sumY = 0, sumXY = 0, sumXX = 0;
-                        for (let i = 0; i < n; i++) {
-                            sumX += i;
-                            sumY += data[i];
-                            sumXY += i * data[i];
-                            sumXX += i * i;
+                        // Regresión lineal SOLO sobre meses con datos reales (venta > 0)
+                        // y COMPLETOS. Se excluyen meses futuros (=0) y el mes en curso
+                        // (es_parcial), porque un mes incompleto sesga la pendiente.
+                        const tendArr = globalData.tendencia;
+                        let sumX = 0, sumY = 0, sumXY = 0, sumXX = 0, n = 0;
+                        for (let i = 0; i < data.length; i++) {
+                            if (data[i] > 0 && !(tendArr[i] && tendArr[i].es_parcial)) {
+                                sumX += i;
+                                sumY += data[i];
+                                sumXY += i * data[i];
+                                sumXX += i * i;
+                                n++;
+                            }
                         }
-                        const slope = (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX);
-                        const intercept = (sumY - slope * sumX) / n;
-                        trendData = data.map((_, i) => slope * i + intercept);
+                        if (n >= 2) {
+                            const slope = (n * sumXY - sumX * sumY) / (n * sumXX - sumX * sumX);
+                            const intercept = (sumY - slope * sumX) / n;
+                            // Proyectar la pendiente a todos los meses (X = índice de mes)
+                            trendData = data.map((_, i) => slope * i + intercept);
+                        }
                     }
 
                     // Dataset inicial
