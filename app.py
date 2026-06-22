@@ -800,7 +800,13 @@ def dashboard():
         # Si no se especifica mes, usar el mes actual solo si año==año_actual, sino usar enero
         if 'mes' not in request.args:
             if año_seleccionado == año_actual:
-                mes_default = fecha_actual.strftime('%Y-%m')
+                # En Render (Free), abrir por defecto en el último mes CERRADO (de Supabase,
+                # ligero) para evitar el OOM/timeout de cargar el mes en curso desde Odoo.
+                # El usuario puede seleccionar el mes en curso manualmente.
+                if IS_RENDER and fecha_actual.month > 1:
+                    mes_default = f"{año_actual}-{(fecha_actual.month - 1):02d}"
+                else:
+                    mes_default = fecha_actual.strftime('%Y-%m')
             else:
                 mes_default = f"{año_seleccionado}-01"
         else:
